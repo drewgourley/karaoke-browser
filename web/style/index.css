@@ -136,6 +136,7 @@ h1 {
 }
 
 .link-card {
+  cursor: pointer;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -178,13 +179,14 @@ h1 {
   color: var(--muted);
   font-size: 0.8rem;
   cursor: pointer;
-  padding: 0.25rem 0;
+  padding: 1rem 0;
   width: 100%;
   text-align: center;
   transition: color 0.2s;
 }
 
 .btn-ghost:hover { color: var(--text); }
+
 
 /* ── Utility ─────────────────────────────────────────────────────────────── */
 

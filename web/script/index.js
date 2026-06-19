@@ -1,53 +1,43 @@
 'use strict';
 
-const loginSection = document.getElementById('login-section');
-const linksSection = document.getElementById('links-section');
-const tokenForm    = document.getElementById('token-form');
-const tokenInput   = document.getElementById('token-input');
-const errorMsg     = document.getElementById('error-msg');
-const logoutBtn    = document.getElementById('logout-btn');
+const createBtn     = document.getElementById('create-btn');
+const createError   = document.getElementById('create-error');
+const roomLinks     = document.getElementById('room-links');
+const controllerBtn = document.getElementById('controller-btn');
+const playerBtn     = document.getElementById('player-btn');
+const newRoomBtn    = document.getElementById('new-room-btn');
 
-// Was a ?token= present when this page loaded? (used to detect a failed attempt)
-const hadTokenParam = new URLSearchParams(location.search).has('token');
+let currentSessionId = null;
 
-function showLogin(withError) {
-  linksSection.classList.add('hidden');
-  loginSection.classList.remove('hidden');
-  errorMsg.classList.toggle('hidden', !withError);
-  if (!withError) tokenInput.value = '';
-}
-
-function showLinks() {
-  loginSection.classList.add('hidden');
-  linksSection.classList.remove('hidden');
-  // Clean ?token= from the URL bar without reloading
-  if (hadTokenParam) history.replaceState(null, '', '/');
-}
-
-// Check authentication status on load
-fetch('/api/auth-status')
-  .then(r => r.json())
-  .then(({ authed }) => {
-    if (authed) {
-      showLinks();
-    } else {
-      // If we just tried a token (via ?token=) and it failed, show the error
-      showLogin(hadTokenParam);
-    }
-  })
-  .catch(() => showLogin(false));
-
-// Token form: redirect to /?token=<value> so the server can set the HttpOnly cookie
-tokenForm.addEventListener('submit', e => {
-  e.preventDefault();
-  const token = tokenInput.value.trim();
-  if (!token) return;
-  location.href = '/?token=' + encodeURIComponent(token);
+controllerBtn.addEventListener('click', () => {
+  if (currentSessionId) window.open('/controller/', currentSessionId + 'C');
+});
+playerBtn.addEventListener('click', () => {
+  if (currentSessionId) window.open('/player/', currentSessionId + 'P');
 });
 
-// Logout: expire the auth cookie then return to login form
-logoutBtn.addEventListener('click', () => {
-  fetch('/api/logout', { method: 'POST' })
-    .then(() => showLogin(false))
-    .catch(() => showLogin(false));
+createBtn.addEventListener('click', async () => {
+  createBtn.disabled = true;
+  createBtn.textContent = 'Setting up\u2026';
+  createError.classList.add('hidden');
+  try {
+    const res = await fetch('/api/session/create', { method: 'POST' });
+    if (!res.ok) throw new Error('Server error');
+    const { sessionId } = await res.json();
+    currentSessionId = sessionId;
+    createBtn.closest('.card').classList.add('hidden');
+    roomLinks.classList.remove('hidden');
+  } catch {
+    createError.classList.remove('hidden');
+    createBtn.disabled = false;
+    createBtn.textContent = 'Start Karaoke Night';
+  }
+});
+
+newRoomBtn.addEventListener('click', () => {
+  currentSessionId = null;
+  roomLinks.classList.add('hidden');
+  createBtn.closest('.card').classList.remove('hidden');
+  createBtn.disabled = false;
+  createBtn.textContent = 'Start Karaoke Night';
 });
