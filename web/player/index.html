@@ -7,7 +7,11 @@
   <link rel="stylesheet" href="../style/player.css">
 </head>
 <body>
-  <div id="idle">Waiting for next song&hellip;</div>
+  <div id="idle">
+    <div id="idle-icon">🎤</div>
+    <div id="idle-label">Queue Empty</div>
+    <div id="idle-sub">Add songs from the controller to continue</div>
+  </div>
   <div id="yt-player"></div>
   <div id="embed-error">
     <img id="embed-thumb" src="" alt="">
@@ -18,6 +22,10 @@
     <div id="slate-eyebrow">Now Singing</div>
     <div id="slate-singer"></div>
     <div id="slate-title"></div>
+  </div>
+  <div id="start-gate">
+    <div id="start-gate-icon">🎤</div>
+    <div id="start-gate-label">Tap to begin</div>
   </div>
   <script src="../script/player.js"></script>
 </body>

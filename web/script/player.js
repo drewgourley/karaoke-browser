@@ -13,6 +13,20 @@ let currentSinger = '';
 let embedFailed = false;
 let shouldPauseOnPlay = false;
 let showingSlate = false;
+let userActivated = false;
+
+// ── Start gate — one tap unlocks autoplay for the session ──────────────────
+document.getElementById('start-gate').addEventListener('click', () => {
+  userActivated = true;
+  const gate = document.getElementById('start-gate');
+  gate.classList.add('fading');
+  setTimeout(() => { gate.style.display = 'none'; }, 450);
+  if (pendingVideoId) {
+    const vid = pendingVideoId;
+    pendingVideoId = null;
+    loadVideo(vid);
+  }
+});
 
 window.onYouTubeIframeAPIReady = function () {
   ytPlayer = new YT.Player('yt-player', {
@@ -64,12 +78,18 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 function loadVideo(videoId) {
+  if (!userActivated) {
+    pendingVideoId = videoId;
+    return;
+  }
   embedFailed = false;
   shouldPauseOnPlay = true;
   showingSlate = false;
   hideSlate(null);
+  const idle = document.getElementById('idle');
+  idle.classList.remove('visible');
+  idle.style.display = 'none';
   currentVideoId = videoId;
-  document.getElementById('idle').style.display = 'none';
   document.getElementById('embed-error').style.display = 'none';
   if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
     ytPlayer.loadVideoById(videoId);
@@ -117,7 +137,10 @@ function showIdle() {
   shouldPauseOnPlay = false;
   showingSlate = false;
   hideSlate(null);
-  document.getElementById('idle').style.display = 'flex';
+  if (!userActivated) return; // start gate is still covering everything
+  const idle = document.getElementById('idle');
+  idle.style.display = 'flex';
+  requestAnimationFrame(() => requestAnimationFrame(() => idle.classList.add('visible')));
   document.getElementById('embed-error').style.display = 'none';
   if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
     ytPlayer.stopVideo();
