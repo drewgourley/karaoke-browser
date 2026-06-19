@@ -5,6 +5,10 @@
   document.head.appendChild(s);
 })();
 
+// \u2500\u2500 Session \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+const sessionId = window.name ? window.name.slice(0, -1) : null;
+if (!sessionId) { location.replace('/'); throw new Error('No session'); }
+
 let ytPlayer = null;
 let pendingVideoId = null;
 let currentVideoId = null;
@@ -162,7 +166,7 @@ function showIdle() {
 let ws;
 
 function connect() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/?s=' + encodeURIComponent(sessionId));
 
   ws.onmessage = function (event) {
     let msg;

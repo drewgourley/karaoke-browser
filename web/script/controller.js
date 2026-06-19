@@ -2,6 +2,16 @@
 let state = { queue: [], nowPlaying: null };
 let dragFrom = null;
 
+// ── Session ──────────────────────────────────────────────────────────────
+// Session ID is carried in window.name (set by the opener via window.open(url, id+'C')).
+// It is never in the page URL, so it doesn't appear in the address bar or browser history.
+const sessionId = window.name ? window.name.slice(0, -1) : null;
+if (!sessionId) { location.replace('/'); throw new Error('No session'); }
+
+document.getElementById('open-player-btn').addEventListener('click', () => {
+  window.open('/player/', sessionId + 'P');
+});
+
 // ── Elements ───────────────────────────────────────────────────────────────
 const dot        = document.getElementById('dot');
 const statusText = document.getElementById('status-text');
@@ -18,7 +28,7 @@ const clearBtn   = document.getElementById('clear-btn');
 let ws;
 
 function connect() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/?s=' + encodeURIComponent(sessionId));
 
   ws.onopen = () => {
     dot.className = 'dot on';

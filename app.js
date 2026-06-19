@@ -11,9 +11,15 @@ app.set('trust proxy', 1); // trust X-Forwarded-* headers from reverse proxy
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const AUTH_TOKEN = process.env.AUTH_TOKEN;
+const { randomBytes } = require('crypto');
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+const AUTH_TOKEN = process.env.AUTH_TOKEN || null;
+
+// ── Auth (optional) ───────────────────────────────────────────────────────────
+// If AUTH_TOKEN is set in .env, HTML entry points are protected by a shared
+// secret. First visit: append ?token=<AUTH_TOKEN> to any URL — an HttpOnly
+// cookie is set and sent automatically on every subsequent request and
+// WebSocket handshake. When AUTH_TOKEN is absent, auth is disabled entirely.
 
 function getCookie(req, name) {
   const header = req.headers.cookie || '';
@@ -25,13 +31,6 @@ function getCookie(req, name) {
   return null;
 }
 
-/**
- * Protects HTML entry points with a shared secret token.
- * First visit: add ?token=<AUTH_TOKEN> to the URL — an HttpOnly cookie is set
- * and the browser (including OBS) sends it automatically on every subsequent
- * request and WebSocket handshake.
- * If AUTH_TOKEN is not set in .env, auth is disabled (local / LAN use).
- */
 function authMiddleware(req, res, next) {
   if (!AUTH_TOKEN) return next();
 
@@ -46,10 +45,10 @@ function authMiddleware(req, res, next) {
       `kp_auth=${encodeURIComponent(AUTH_TOKEN)}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
   }
 
-  // Root index is always accessible — it is the login/entry page itself.
+  // Root index is always accessible — it is the entry/room-creation page.
   if (p === '/' || p === '/index.html') return next();
 
-  // Only gate HTML entry points; CSS/JS assets load freely once the cookie is set.
+  // Only gate HTML entry points; CSS/JS assets load freely.
   if (!p.endsWith('/') && !p.endsWith('.html')) return next();
 
   if (queryToken === AUTH_TOKEN || cookieToken === AUTH_TOKEN) return next();
@@ -57,27 +56,57 @@ function authMiddleware(req, res, next) {
   res.status(401).send('Unauthorized');
 }
 
+// ── Sessions ──────────────────────────────────────────────────────────────────
+// Map<sessionId, { queue, nowPlaying, paused, nextId, clients: Set<ws>, lastActivity }>
+
+const sessions = new Map();
+const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours of inactivity
+
+function createSession() {
+  const id = randomBytes(20).toString('hex'); // 40-char hex, unguessable
+  sessions.set(id, {
+    queue: [],
+    nowPlaying: null,
+    paused: false,
+    nextId: 1,
+    clients: new Set(),
+    lastActivity: Date.now(),
+  });
+  return id;
+}
+
+function getSession(id) {
+  return sessions.get(id) || null;
+}
+
+function touchSession(session) {
+  session.lastActivity = Date.now();
+}
+
+// Periodic cleanup: remove sessions idle longer than SESSION_TTL_MS with no active connections
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (session.clients.size === 0 && now - session.lastActivity > SESSION_TTL_MS) {
+      sessions.delete(id);
+    }
+  }
+}, 30 * 60 * 1000);
+
 app.use(authMiddleware);
 app.use(express.static(path.join(__dirname, 'web')));
 
-// ── State ────────────────────────────────────────────────────────────────────
-
-let queue = [];        // { id, videoId, title, url }[]
-let nowPlaying = null; // { id, videoId, title, url } | null
-let paused = false;
-let nextId = 1;
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function broadcast(data) {
+function broadcast(session, data) {
   const msg = JSON.stringify(data);
-  wss.clients.forEach(client => {
+  for (const client of session.clients) {
     if (client.readyState === 1) client.send(msg);
-  });
+  }
 }
 
-function broadcastState() {
-  broadcast({ type: 'state', queue, nowPlaying, paused });
+function broadcastState(session) {
+  broadcast(session, { type: 'state', queue: session.queue, nowPlaying: session.nowPlaying, paused: session.paused });
 }
 
 /** Extract a YouTube video ID from common URL formats. */
@@ -131,22 +160,17 @@ function decodeEntities(str) {
     .replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'");
 }
 
-function playNext() {
-  paused = false;
-  nowPlaying = queue.length > 0 ? queue.shift() : null;
-  broadcastState();
+function playNext(session) {
+  session.paused = false;
+  session.nowPlaying = session.queue.length > 0 ? session.queue.shift() : null;
+  broadcastState(session);
 }
 
-// ── REST – auth ───────────────────────────────────────────────────────────────
+// ── REST – session ────────────────────────────────────────────────────────────
 
-app.get('/api/auth-status', (req, res) => {
-  if (!AUTH_TOKEN) return res.json({ authed: true });
-  res.json({ authed: getCookie(req, 'kp_auth') === AUTH_TOKEN });
-});
-
-app.post('/api/logout', (req, res) => {
-  res.setHeader('Set-Cookie', 'kp_auth=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
-  res.json({ ok: true });
+app.post('/api/session/create', (req, res) => {
+  const id = createSession();
+  res.json({ sessionId: id });
 });
 
 // ── REST – title lookup ───────────────────────────────────────────────────────
@@ -254,50 +278,66 @@ wss.on('connection', (ws, req) => {
     ws.close(4001, 'Unauthorized');
     return;
   }
+
+  const wsUrl = new URL(req.url, 'http://localhost');
+  const sessionId = wsUrl.searchParams.get('s');
+  const session = sessionId ? getSession(sessionId) : null;
+  if (!session) {
+    ws.close(4004, 'Session not found');
+    return;
+  }
+
+  touchSession(session);
+  session.clients.add(ws);
+
   // Sync new client immediately
-  ws.send(JSON.stringify({ type: 'state', queue, nowPlaying, paused }));
+  ws.send(JSON.stringify({ type: 'state', queue: session.queue, nowPlaying: session.nowPlaying, paused: session.paused }));
+
+  ws.on('close', () => {
+    session.clients.delete(ws);
+  });
 
   ws.on('message', raw => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
+    touchSession(session);
 
     switch (msg.type) {
       case 'add': {
         const videoId = extractVideoId(msg.url);
         if (!videoId) return;
         const item = {
-          id: nextId++,
+          id: session.nextId++,
           videoId,
           url: `https://www.youtube.com/watch?v=${videoId}`,
           title: cleanTitle(msg.title) || `Video ${videoId}`,
           singer: sanitiseTitle(msg.singer || ''),
         };
-        queue.push(item);
-        // Auto-start if nothing is playing
-        if (!nowPlaying) playNext();
-        else broadcastState();
+        session.queue.push(item);
+        if (!session.nowPlaying) playNext(session);
+        else broadcastState(session);
         break;
       }
 
       case 'play-index': {
         const idx = Number(msg.index);
-        if (Number.isInteger(idx) && idx >= 0 && idx < queue.length) {
-          paused = false;
-          nowPlaying = queue.splice(idx, 1)[0];
-          broadcastState();
+        if (Number.isInteger(idx) && idx >= 0 && idx < session.queue.length) {
+          session.paused = false;
+          session.nowPlaying = session.queue.splice(idx, 1)[0];
+          broadcastState(session);
         }
         break;
       }
 
       case 'next':
-        playNext();
+        playNext(session);
         break;
 
       case 'remove': {
         const idx = Number(msg.index);
-        if (Number.isInteger(idx) && idx >= 0 && idx < queue.length) {
-          queue.splice(idx, 1);
-          broadcastState();
+        if (Number.isInteger(idx) && idx >= 0 && idx < session.queue.length) {
+          session.queue.splice(idx, 1);
+          broadcastState(session);
         }
         break;
       }
@@ -307,39 +347,38 @@ wss.on('connection', (ws, req) => {
         const to = Number(msg.to);
         if (
           Number.isInteger(from) && Number.isInteger(to) &&
-          from >= 0 && from < queue.length &&
-          to >= 0 && to < queue.length &&
+          from >= 0 && from < session.queue.length &&
+          to >= 0 && to < session.queue.length &&
           from !== to
         ) {
-          const [item] = queue.splice(from, 1);
-          queue.splice(to, 0, item);
-          broadcastState();
+          const [item] = session.queue.splice(from, 1);
+          session.queue.splice(to, 0, item);
+          broadcastState(session);
         }
         break;
       }
 
       case 'restart':
-        if (nowPlaying) {
-          paused = false;
-          broadcast({ type: 'restart' });
+        if (session.nowPlaying) {
+          session.paused = false;
+          broadcast(session, { type: 'restart' });
         }
         break;
 
       case 'video-ended':
-        // Player reports end of video – advance queue
-        playNext();
+        playNext(session);
         break;
 
       case 'pause':
-        if (nowPlaying) { paused = true; broadcastState(); }
+        if (session.nowPlaying) { session.paused = true; broadcastState(session); }
         break;
 
       case 'resume':
-        if (nowPlaying) { paused = false; broadcastState(); }
+        if (session.nowPlaying) { session.paused = false; broadcastState(session); }
         break;
 
       case 'video-error':
-        if (nowPlaying) { nowPlaying.embedFailed = true; broadcastState(); }
+        if (session.nowPlaying) { session.nowPlaying.embedFailed = true; broadcastState(session); }
         break;
     }
   });
@@ -350,6 +389,5 @@ wss.on('connection', (ws, req) => {
 const PORT = process.env.PORT || 3444;
 server.listen(PORT, () => {
   console.log(`\nKaraoke Browser running at http://localhost:${PORT}`);
-  console.log(`  Player (OBS capture): http://localhost:${PORT}/player/`);
-  console.log(`  Controller:           http://localhost:${PORT}/controller/\n`);
+  console.log(`  Create a room at: http://localhost:${PORT}/\n`);
 });

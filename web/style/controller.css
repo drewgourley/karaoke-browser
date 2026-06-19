@@ -25,13 +25,38 @@ header {
   border-bottom: 1px solid var(--border);
   padding: 0.875rem 1.5rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.5rem;
   justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.session-label { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.session-bar code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: var(--accent2);
+  cursor: default;
+  user-select: all;
+}
+.session-copy {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
 
 .status {
   display: inline-flex;
