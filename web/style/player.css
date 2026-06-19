@@ -17,6 +17,18 @@ html, body {
   pointer-events: none;
 }
 
+/* In fullscreen the embed fills the whole screen — no fixed size, no border */
+:fullscreen #yt-player,
+:-webkit-full-screen #yt-player {
+  position: fixed;
+  inset: 0;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  outline: none;
+}
+
 #idle {
   position: fixed;
   inset: 0;
@@ -162,6 +174,12 @@ html, body {
   pointer-events: auto;
 }
 #fullscreen-btn:hover { color: #7dd8f5; border-color: rgba(76, 201, 240, 0.6); }
+
+/* In fullscreen the button must sit above the full-viewport embed */
+:fullscreen #fullscreen-btn,
+:-webkit-full-screen #fullscreen-btn {
+  z-index: 2147483647;
+}
 
 #slate-eyebrow {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
