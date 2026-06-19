@@ -48,8 +48,13 @@ window.onYouTubeIframeAPIReady = function () {
     events: {
       onReady: function () {
         if (pendingVideoId) {
-          loadVideo(pendingVideoId);
-          pendingVideoId = null;
+          if (userActivated) {
+            // Gate was tapped before the API was ready — load now.
+            const vid = pendingVideoId;
+            pendingVideoId = null;
+            loadVideo(vid);
+          }
+          // If !userActivated, leave pendingVideoId intact so the gate handler can pick it up.
         }
       },
       onStateChange: function (e) {
