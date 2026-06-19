@@ -302,6 +302,13 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
+      case 'restart':
+        if (nowPlaying) {
+          paused = false;
+          broadcast({ type: 'restart' });
+        }
+        break;
+
       case 'video-ended':
         // Player reports end of video – advance queue
         playNext();

@@ -85,11 +85,13 @@ function renderNP() {
         '<div class="np-title" title="' + esc(np.title) + '">' + esc(np.title) + '</div>' +
         (np.singer ? '<div class="np-singer">🎤 ' + esc(np.singer) + '</div>' : '') +
         '<div class="row">' +
+          '<button class="secondary icon" id="restart-btn">↺ Restart</button>' +
           '<button class="secondary icon" id="playpause-btn">' + (isPaused ? '▶ Begin' : '⏸ Pause') + '</button>' +
           '<button class="secondary icon" id="skip-btn">⏭ Skip</button>' +
         '</div>' +
       '</div>' +
     '</div>';
+  document.getElementById('restart-btn').addEventListener('click', () => send({ type: 'restart' }));
   document.getElementById('playpause-btn').addEventListener('click', () => send({ type: isPaused ? 'resume' : 'pause' }));
   document.getElementById('skip-btn').addEventListener('click', () => send({ type: 'next' }));
 }
@@ -110,6 +112,8 @@ function renderQueue() {
         (item.singer ? '<span class="qi-singer">🎤 ' + esc(item.singer) + '</span>' : '') +
       '</div>' +
       '<div class="qi-actions">' +
+        (i > 0 ? '<button class="ghost" data-action="up" data-i="' + i + '" title="Move up">↑</button>' : '<span class="qi-spacer"></span>') +
+        (i < state.queue.length - 1 ? '<button class="ghost" data-action="down" data-i="' + i + '" title="Move down">↓</button>' : '<span class="qi-spacer"></span>') +
         '<button class="ghost" data-action="play" data-i="' + i + '" title="Play now">▶</button>' +
         '<button class="ghost" data-action="remove" data-i="' + i + '" title="Remove">✕</button>' +
       '</div>' +
@@ -121,6 +125,8 @@ function renderQueue() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.i);
+      if (btn.dataset.action === 'up')     send({ type: 'reorder', from: idx, to: idx - 1 });
+      if (btn.dataset.action === 'down')   send({ type: 'reorder', from: idx, to: idx + 1 });
       if (btn.dataset.action === 'play')   send({ type: 'play-index', index: idx });
       if (btn.dataset.action === 'remove') send({ type: 'remove',     index: idx });
     });

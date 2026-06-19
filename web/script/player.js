@@ -163,6 +163,11 @@ function connect() {
     let msg;
     try { msg = JSON.parse(event.data); } catch { return; }
 
+    if (msg.type === 'restart') {
+      if (currentVideoId) loadVideo(currentVideoId);
+      return;
+    }
+
     if (msg.type === 'state') {
       if (msg.nowPlaying) {
         currentTitle  = msg.nowPlaying.title  || '';
