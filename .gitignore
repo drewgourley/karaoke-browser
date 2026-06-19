@@ -1,11 +1,11 @@
-# Dependencies
+# dependencies
 node_modules/
 
-# Environment — contains your YouTube API key, never commit this
+# secrets
 .env
+ecosystem.config.js
 
-# Logs
-logs/
+# logs
 *.log
 npm-debug.log*
 
