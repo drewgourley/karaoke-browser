@@ -60,13 +60,30 @@ function showRoomLinks() {
 
 // ── Login ──────────────────────────────────────────────────────────────────
 
-// Redirect to /?token=… so the server sets the HttpOnly cookie, then reload
-// shows the create section automatically via the auth-status check.
-tokenForm.addEventListener('submit', e => {
+// Hash the password client-side with SHA-256, then POST the hash to /api/login.
+// The raw password never leaves the browser.
+tokenForm.addEventListener('submit', async e => {
   e.preventDefault();
-  const token = tokenInput.value.trim();
-  if (!token) return;
-  location.href = '/?token=' + encodeURIComponent(token);
+  const password = tokenInput.value.trim();
+  if (!password) return;
+
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+  const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hash }),
+    });
+    if (res.ok) {
+      showCreate();
+    } else {
+      showLogin(true);
+    }
+  } catch {
+    showLogin(true);
+  }
 });
 
 // ── Create room ────────────────────────────────────────────────────────────

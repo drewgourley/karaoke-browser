@@ -11,15 +11,19 @@ app.set('trust proxy', 1); // trust X-Forwarded-* headers from reverse proxy
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const { randomBytes } = require('crypto');
+const { randomBytes, createHash } = require('crypto');
 
 const AUTH_TOKEN = process.env.AUTH_TOKEN || null;
+// One-way hash of the token — this is what the cookie stores and what the
+// client must prove knowledge of. The plaintext token never travels over the wire.
+const AUTH_HASH = AUTH_TOKEN ? createHash('sha256').update(AUTH_TOKEN).digest('hex') : null;
 
 // ── Auth (optional) ───────────────────────────────────────────────────────────
-// If AUTH_TOKEN is set in .env, HTML entry points are protected by a shared
-// secret. First visit: append ?token=<AUTH_TOKEN> to any URL — an HttpOnly
-// cookie is set and sent automatically on every subsequent request and
-// WebSocket handshake. When AUTH_TOKEN is absent, auth is disabled entirely.
+// If AUTH_TOKEN is set in .env, HTML entry points are protected by a password.
+// The browser hashes the password with SHA-256 and POSTs the hash to /api/login.
+// The server sets an HttpOnly cookie containing the hash, which is validated on
+// every subsequent HTML request and WebSocket handshake.
+// When AUTH_TOKEN is absent, auth is disabled entirely.
 
 function getCookie(req, name) {
   const header = req.headers.cookie || '';
@@ -32,26 +36,18 @@ function getCookie(req, name) {
 }
 
 function authMiddleware(req, res, next) {
-  if (!AUTH_TOKEN) return next();
+  if (!AUTH_HASH) return next();
 
   const p = req.path;
-  const queryToken = req.query.token;
   const cookieToken = getCookie(req, 'kp_auth');
 
-  // Set cookie whenever a valid token appears in the query string (any page).
-  if (queryToken === AUTH_TOKEN && cookieToken !== AUTH_TOKEN) {
-    const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    res.setHeader('Set-Cookie',
-      `kp_auth=${encodeURIComponent(AUTH_TOKEN)}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
-  }
-
-  // Root index is always accessible — it is the entry/room-creation page.
+  // Root index is always accessible — it is the login/entry page.
   if (p === '/' || p === '/index.html') return next();
 
   // Only gate HTML entry points; CSS/JS assets load freely.
   if (!p.endsWith('/') && !p.endsWith('.html')) return next();
 
-  if (queryToken === AUTH_TOKEN || cookieToken === AUTH_TOKEN) return next();
+  if (cookieToken === AUTH_HASH) return next();
 
   res.status(401).send('Unauthorized');
 }
@@ -94,6 +90,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 app.use(authMiddleware);
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'web')));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -170,9 +167,21 @@ function playNext(session) {
 
 app.get('/api/auth-status', (req, res) => {
   res.json({
-    authRequired: !!AUTH_TOKEN,
-    authed: !AUTH_TOKEN || getCookie(req, 'kp_auth') === AUTH_TOKEN,
+    authRequired: !!AUTH_HASH,
+    authed: !AUTH_HASH || getCookie(req, 'kp_auth') === AUTH_HASH,
   });
+});
+
+app.post('/api/login', (req, res) => {
+  if (!AUTH_HASH) return res.json({ ok: true }); // no auth configured
+  const { hash } = req.body || {};
+  if (typeof hash !== 'string' || hash !== AUTH_HASH) {
+    return res.status(401).json({ ok: false });
+  }
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie',
+    `kp_auth=${AUTH_HASH}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
+  res.json({ ok: true });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -184,9 +193,9 @@ app.post('/api/logout', (req, res) => {
 
 app.post('/api/session/create', (req, res) => {
   let id;
-  if (AUTH_TOKEN) {
-    // Auth mode: one fixed session for the whole server, keyed to the token.
-    id = AUTH_TOKEN;
+  if (AUTH_HASH) {
+    // Auth mode: one fixed session for the whole server, keyed to the token hash.
+    id = AUTH_HASH;
     if (!getSession(id)) {
       sessions.set(id, {
         queue: [],
@@ -304,7 +313,7 @@ app.get('/api/search', async (req, res) => {
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
 wss.on('connection', (ws, req) => {
-  if (AUTH_TOKEN && getCookie(req, 'kp_auth') !== AUTH_TOKEN) {
+  if (AUTH_HASH && getCookie(req, 'kp_auth') !== AUTH_HASH) {
     ws.close(4001, 'Unauthorized');
     return;
   }
