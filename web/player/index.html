@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Karaoke Player</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F3A4;</text></svg>">
+  <link rel="stylesheet" href="../style/player.css">
+</head>
+<body>
+  <div id="idle">Waiting for next song&hellip;</div>
+  <div id="yt-player"></div>
+  <div id="embed-error">
+    <img id="embed-thumb" src="" alt="">
+    <div id="embed-title"></div>
+    <div id="embed-sub">Playing on YouTube &mdash; check the controller</div>
+  </div>
+  <div id="singer-slate">
+    <div id="slate-eyebrow">Now Singing</div>
+    <div id="slate-singer"></div>
+    <div id="slate-title"></div>
+  </div>
+  <script src="../script/player.js"></script>
+</body>
+</html>

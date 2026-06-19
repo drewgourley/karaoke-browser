@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Environment — contains your YouTube API key, never commit this
+.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

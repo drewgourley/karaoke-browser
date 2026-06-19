@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karaoke Controller</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F3A4;</text></svg>">
+  <link rel="stylesheet" href="../style/controller.css">
+</head>
+<body>
+
+<header>
+  <h1>🎤 Karaoke Controller</h1>
+  <div class="status">
+    <div class="dot" id="dot"></div>
+    <span id="status-text">Connecting…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Left column: Now Playing + Queue -->
+  <div class="col">
+
+    <!-- Now Playing -->
+    <div class="card">
+      <div class="card-label">Now Playing</div>
+      <div id="now-playing"><span class="np-idle">Nothing playing</span></div>
+    </div>
+
+    <!-- Queue -->
+    <div class="card">
+      <div class="queue-header">
+        <div class="card-label" style="margin-bottom:0">
+          Up Next <span class="badge" id="q-count">0</span>
+        </div>
+        <button class="ghost" id="clear-btn" title="Clear entire queue" style="font-size:0.75rem">Clear all</button>
+      </div>
+      <ul class="queue" id="queue-list">
+        <li class="empty">Queue is empty</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Right column: Find Song -->
+  <div class="col">
+
+    <!-- Find Song -->
+    <div class="card">
+      <div class="find-header">
+        <div class="card-label" style="margin-bottom:0">Find Song</div>
+        <div class="find-tabs">
+          <button class="tab-btn active" id="tab-search">&#x1F50D; Search</button>
+          <button class="tab-btn" id="tab-url">&#x1F517; Paste URL</button>
+        </div>
+      </div>
+
+      <!-- Search panel -->
+      <div id="panel-search">
+        <div class="row">
+          <input type="text" id="search-input" placeholder="Search for a karaoke song…" autocomplete="off" />
+          <label class="karaoke-label" title="Append 'karaoke' to your search">
+            <input type="checkbox" id="karaoke-check" checked> +karaoke
+          </label>
+          <button id="search-btn">Search</button>
+        </div>
+        <div id="search-results"></div>
+      </div>
+
+      <!-- URL panel -->
+      <div id="panel-url" style="display:none">
+        <div class="add-form">
+          <div class="row">
+            <input type="url" id="url-input" placeholder="Paste a YouTube URL…" autocomplete="off" />
+            <button class="secondary" id="fetch-btn">Fetch Title</button>
+          </div>
+          <div class="row">
+            <input type="text" id="title-input" placeholder="Title (auto-fetched on paste)" autocomplete="off" />
+            <button id="add-btn">+ Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<!-- Singer modal -->
+<div class="modal-overlay" id="singer-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-song" id="modal-song"></div>
+    <div class="modal-heading">🎤 Who's singing?</div>
+    <input type="text" id="singer-input" placeholder="Singer's name (optional)" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="secondary" id="modal-skip">Cancel</button>
+      <button id="modal-confirm">Add to queue</button>
+    </div>
+  </div>
+</div>
+
+<script src="../script/controller.js"></script>
+</body>
+</html>
