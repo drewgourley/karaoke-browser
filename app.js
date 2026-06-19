@@ -7,9 +7,53 @@ const http = require('http');
 const path = require('path');
 
 const app = express();
+app.set('trust proxy', 1); // trust X-Forwarded-* headers from reverse proxy
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+const AUTH_TOKEN = process.env.AUTH_TOKEN;
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+function getCookie(req, name) {
+  const header = req.headers.cookie || '';
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return null;
+}
+
+/**
+ * Protects HTML entry points with a shared secret token.
+ * First visit: add ?token=<AUTH_TOKEN> to the URL — an HttpOnly cookie is set
+ * and the browser (including OBS) sends it automatically on every subsequent
+ * request and WebSocket handshake.
+ * If AUTH_TOKEN is not set in .env, auth is disabled (local / LAN use).
+ */
+function authMiddleware(req, res, next) {
+  if (!AUTH_TOKEN) return next();
+  // Only gate HTML entry points; CSS/JS assets load freely once the cookie is set.
+  const p = req.path;
+  if (!p.endsWith('/') && !p.endsWith('.html')) return next();
+
+  const queryToken = req.query.token;
+  const cookieToken = getCookie(req, 'kp_auth');
+
+  if (queryToken === AUTH_TOKEN || cookieToken === AUTH_TOKEN) {
+    if (queryToken === AUTH_TOKEN && cookieToken !== AUTH_TOKEN) {
+      const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+      res.setHeader('Set-Cookie',
+        `kp_auth=${encodeURIComponent(AUTH_TOKEN)}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
+    }
+    return next();
+  }
+
+  res.status(401).send('Unauthorized');
+}
+
+app.use(authMiddleware);
 app.use(express.static(path.join(__dirname, 'web')));
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -189,7 +233,11 @@ app.get('/api/search', async (req, res) => {
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
+  if (AUTH_TOKEN && getCookie(req, 'kp_auth') !== AUTH_TOKEN) {
+    ws.close(4001, 'Unauthorized');
+    return;
+  }
   // Sync new client immediately
   ws.send(JSON.stringify({ type: 'state', queue, nowPlaying, paused }));
 

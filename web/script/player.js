@@ -14,6 +14,7 @@ let embedFailed = false;
 let shouldPauseOnPlay = false;
 let showingSlate = false;
 let userActivated = false;
+let hideSlateTimer = null;
 
 // ── Start gate — one tap unlocks autoplay for the session ──────────────────
 document.getElementById('start-gate').addEventListener('click', () => {
@@ -67,7 +68,8 @@ window.onYouTubeIframeAPIReady = function () {
         }
       },
       onError: function (e) {
-        // 100 = removed/private; 101/150 = embedding disabled by owner
+        console.warn('[YT] onError code:', e.data);
+        // 100 = removed/private; 101/150 = embedding disabled by owner/environment
         if (e.data === 100 || e.data === 101 || e.data === 150) {
           showEmbedError(currentVideoId);
           ws.send(JSON.stringify({ type: 'video-error', code: e.data }));
@@ -99,6 +101,8 @@ function loadVideo(videoId) {
 }
 
 function showSlate() {
+  // Cancel any pending hideSlate timer so it can't clobber this slate.
+  if (hideSlateTimer) { clearTimeout(hideSlateTimer); hideSlateTimer = null; }
   showingSlate = true;
   const slate = document.getElementById('singer-slate');
   document.getElementById('slate-eyebrow').textContent = currentSinger ? 'Now Singing' : 'Up Next';
@@ -110,9 +114,11 @@ function showSlate() {
 }
 
 function hideSlate(callback) {
+  if (hideSlateTimer) { clearTimeout(hideSlateTimer); hideSlateTimer = null; }
   const slate = document.getElementById('singer-slate');
   slate.classList.remove('visible');
-  setTimeout(() => {
+  hideSlateTimer = setTimeout(() => {
+    hideSlateTimer = null;
     slate.style.display = 'none';
     showingSlate = false;
     if (callback) callback();
@@ -137,7 +143,6 @@ function showIdle() {
   shouldPauseOnPlay = false;
   showingSlate = false;
   hideSlate(null);
-  if (!userActivated) return; // start gate is still covering everything
   const idle = document.getElementById('idle');
   idle.style.display = 'flex';
   requestAnimationFrame(() => requestAnimationFrame(() => idle.classList.add('visible')));
@@ -152,7 +157,7 @@ function showIdle() {
 let ws;
 
 function connect() {
-  ws = new WebSocket('ws://' + location.host);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host);
 
   ws.onmessage = function (event) {
     let msg;

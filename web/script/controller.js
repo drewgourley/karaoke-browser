@@ -18,7 +18,7 @@ const clearBtn   = document.getElementById('clear-btn');
 let ws;
 
 function connect() {
-  ws = new WebSocket('ws://' + location.host);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host);
 
   ws.onopen = () => {
     dot.className = 'dot on';
