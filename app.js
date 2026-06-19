@@ -147,7 +147,7 @@ app.get('/api/title', async (req, res) => {
     const r = await fetch(oembedUrl, { signal: AbortSignal.timeout(5000) });
     if (r.ok) {
       const data = await r.json();
-      if (data.title) return res.json({ title: cleanTitle(data.title) });
+      if (data.title) return res.json({ title: cleanTitle(decodeEntities(data.title)) });
     }
   } catch { /* fall through to page scrape */ }
 
@@ -218,8 +218,8 @@ app.get('/api/search', async (req, res) => {
       .filter(i => embeddable.has(i.id.videoId))
       .map(i => ({
         videoId: i.id.videoId,
-        title:   cleanTitle(i.snippet.title),
-        channel: sanitiseTitle(i.snippet.channelTitle),
+        title:   cleanTitle(decodeEntities(i.snippet.title)),
+        channel: sanitiseTitle(decodeEntities(i.snippet.channelTitle)),
         thumb:   i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url || '',
         url:     'https://www.youtube.com/watch?v=' + i.id.videoId,
       }));
