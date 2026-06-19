@@ -196,3 +196,32 @@ function connect() {
 }
 
 connect();
+
+// ── Fullscreen button ──────────────────────────────────────────────────────
+(function () {
+  const btn = document.getElementById('fullscreen-btn');
+  let hideTimer = null;
+
+  function showBtn() {
+    btn.classList.add('visible');
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => btn.classList.remove('visible'), 3000);
+  }
+
+  document.addEventListener('mousemove', showBtn);
+  showBtn(); // brief reveal on load so the button is discoverable
+
+  btn.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  });
+
+  document.addEventListener('fullscreenchange', () => {
+    const fs = !!document.fullscreenElement;
+    btn.textContent = fs ? '⊡' : '⛶';
+    btn.title = fs ? 'Exit fullscreen' : 'Enter fullscreen';
+  });
+}());
