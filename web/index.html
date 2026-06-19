@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karaoke Browser</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F3A4;</text></svg>">
+  <link rel="stylesheet" href="style/index.css">
+</head>
+<body>
+  <div class="page">
+
+    <header>
+      <div class="logo">🎤</div>
+      <h1>Karaoke Browser</h1>
+      <p class="subtitle">Your karaoke night command centre</p>
+    </header>
+
+    <!-- Login form (shown when not authenticated) -->
+    <div id="login-section" class="card hidden">
+      <h2>Enter Access Token</h2>
+      <p class="hint">Paste the token provided by your host to access the player and controller.</p>
+      <form id="token-form" autocomplete="off">
+        <input id="token-input" type="password" placeholder="Paste token here…"
+               autocomplete="off" spellcheck="false">
+        <button type="submit" class="btn-primary">Log In</button>
+      </form>
+      <div id="error-msg" class="error hidden">Invalid token — please try again.</div>
+    </div>
+
+    <!-- App links (shown when authenticated) -->
+    <div id="links-section" class="hidden">
+      <div class="links-grid">
+        <a class="link-card" href="/controller/">
+          <div class="link-icon">🎤</div>
+          <div class="link-title">Controller</div>
+          <div class="link-desc">Add songs, manage the queue, and control playback</div>
+        </a>
+        <a class="link-card" target="_blank" href="/player/">
+          <div class="link-icon">🎬</div>
+          <div class="link-title">Player</div>
+          <div class="link-desc">Fullscreen video player — display on screen or capture in OBS</div>
+        </a>
+      </div>
+      <button id="logout-btn" class="btn-ghost">Log out</button>
+    </div>
+
+  </div>
+
+  <script src="script/index.js"></script>
+</body>
+</html>

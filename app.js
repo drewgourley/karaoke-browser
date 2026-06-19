@@ -34,21 +34,25 @@ function getCookie(req, name) {
  */
 function authMiddleware(req, res, next) {
   if (!AUTH_TOKEN) return next();
-  // Only gate HTML entry points; CSS/JS assets load freely once the cookie is set.
-  const p = req.path;
-  if (!p.endsWith('/') && !p.endsWith('.html')) return next();
 
+  const p = req.path;
   const queryToken = req.query.token;
   const cookieToken = getCookie(req, 'kp_auth');
 
-  if (queryToken === AUTH_TOKEN || cookieToken === AUTH_TOKEN) {
-    if (queryToken === AUTH_TOKEN && cookieToken !== AUTH_TOKEN) {
-      const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-      res.setHeader('Set-Cookie',
-        `kp_auth=${encodeURIComponent(AUTH_TOKEN)}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
-    }
-    return next();
+  // Set cookie whenever a valid token appears in the query string (any page).
+  if (queryToken === AUTH_TOKEN && cookieToken !== AUTH_TOKEN) {
+    const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.setHeader('Set-Cookie',
+      `kp_auth=${encodeURIComponent(AUTH_TOKEN)}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
   }
+
+  // Root index is always accessible — it is the login/entry page itself.
+  if (p === '/' || p === '/index.html') return next();
+
+  // Only gate HTML entry points; CSS/JS assets load freely once the cookie is set.
+  if (!p.endsWith('/') && !p.endsWith('.html')) return next();
+
+  if (queryToken === AUTH_TOKEN || cookieToken === AUTH_TOKEN) return next();
 
   res.status(401).send('Unauthorized');
 }
@@ -132,6 +136,18 @@ function playNext() {
   nowPlaying = queue.length > 0 ? queue.shift() : null;
   broadcastState();
 }
+
+// ── REST – auth ───────────────────────────────────────────────────────────────
+
+app.get('/api/auth-status', (req, res) => {
+  if (!AUTH_TOKEN) return res.json({ authed: true });
+  res.json({ authed: getCookie(req, 'kp_auth') === AUTH_TOKEN });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'kp_auth=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  res.json({ ok: true });
+});
 
 // ── REST – title lookup ───────────────────────────────────────────────────────
 
