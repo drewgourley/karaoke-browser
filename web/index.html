@@ -16,8 +16,20 @@
       <p class="subtitle">Your karaoke night command center</p>
     </header>
 
+    <!-- Login form (shown in AUTH_TOKEN mode when not authenticated) -->
+    <div id="login-section" class="card hidden">
+      <h2>Enter Access Token</h2>
+      <p class="hint">Paste the token provided by your host to access the player and controller.</p>
+      <form id="token-form" autocomplete="off">
+        <input id="token-input" type="password" placeholder="Paste token here…"
+               autocomplete="off" spellcheck="false">
+        <button type="submit" class="btn-primary">Log In</button>
+      </form>
+      <div id="token-error" class="error hidden">Invalid token — please try again.</div>
+    </div>
+
     <!-- Create a new room -->
-    <div class="card">
+    <div id="create-section" class="card hidden">
       <button id="create-btn" class="btn-primary">Start Karaoke Night</button>
       <div id="create-error" class="error hidden">Could not create room — please try again.</div>
     </div>
@@ -36,7 +48,8 @@
           <div class="link-desc">Fullscreen video player — display on screen or capture in OBS</div>
         </button>
       </div>
-      <button id="new-room-btn" class="btn-ghost">Start a new room</button>
+      <button id="new-room-btn" class="btn-ghost hidden">Start a new room</button>
+      <button id="logout-btn" class="btn-ghost hidden">Log out</button>
     </div>
 
   </div>

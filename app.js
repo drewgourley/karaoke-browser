@@ -166,10 +166,40 @@ function playNext(session) {
   broadcastState(session);
 }
 
+// ── REST – auth ───────────────────────────────────────────────────────────────
+
+app.get('/api/auth-status', (req, res) => {
+  res.json({
+    authRequired: !!AUTH_TOKEN,
+    authed: !AUTH_TOKEN || getCookie(req, 'kp_auth') === AUTH_TOKEN,
+  });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'kp_auth=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  res.json({ ok: true });
+});
+
 // ── REST – session ────────────────────────────────────────────────────────────
 
 app.post('/api/session/create', (req, res) => {
-  const id = createSession();
+  let id;
+  if (AUTH_TOKEN) {
+    // Auth mode: one fixed session for the whole server, keyed to the token.
+    id = AUTH_TOKEN;
+    if (!getSession(id)) {
+      sessions.set(id, {
+        queue: [],
+        nowPlaying: null,
+        paused: false,
+        nextId: 1,
+        clients: new Set(),
+        lastActivity: Date.now(),
+      });
+    }
+  } else {
+    id = createSession();
+  }
   res.json({ sessionId: id });
 });
 

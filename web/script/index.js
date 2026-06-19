@@ -1,13 +1,75 @@
 'use strict';
 
+const loginSection  = document.getElementById('login-section');
+const tokenForm     = document.getElementById('token-form');
+const tokenInput    = document.getElementById('token-input');
+const tokenError    = document.getElementById('token-error');
+const createSection = document.getElementById('create-section');
 const createBtn     = document.getElementById('create-btn');
 const createError   = document.getElementById('create-error');
 const roomLinks     = document.getElementById('room-links');
 const controllerBtn = document.getElementById('controller-btn');
 const playerBtn     = document.getElementById('player-btn');
 const newRoomBtn    = document.getElementById('new-room-btn');
+const logoutBtn     = document.getElementById('logout-btn');
 
 let currentSessionId = null;
+let authMode = false; // true when AUTH_TOKEN is active on the server
+
+// ── Boot: check auth status ────────────────────────────────────────────────
+
+fetch('/api/auth-status')
+  .then(r => r.json())
+  .then(({ authRequired, authed }) => {
+    authMode = authRequired;
+    if (authRequired && !authed) {
+      showLogin();
+    } else {
+      showCreate();
+    }
+  })
+  .catch(() => showCreate()); // if the check fails, optimistically show create
+
+// ── Views ──────────────────────────────────────────────────────────────────
+
+function showLogin(withError = false) {
+  loginSection.classList.remove('hidden');
+  createSection.classList.add('hidden');
+  roomLinks.classList.add('hidden');
+  tokenError.classList.toggle('hidden', !withError);
+  if (!withError) tokenInput.value = '';
+  tokenInput.focus();
+}
+
+function showCreate() {
+  loginSection.classList.add('hidden');
+  createSection.classList.remove('hidden');
+  roomLinks.classList.add('hidden');
+  createBtn.disabled = false;
+  createBtn.textContent = 'Start Karaoke Night';
+}
+
+function showRoomLinks() {
+  createSection.classList.add('hidden');
+  loginSection.classList.add('hidden');
+  roomLinks.classList.remove('hidden');
+  // In auth mode there's only one room — offer logout, not a new room.
+  newRoomBtn.classList.toggle('hidden', authMode);
+  logoutBtn.classList.toggle('hidden', !authMode);
+}
+
+// ── Login ──────────────────────────────────────────────────────────────────
+
+// Redirect to /?token=… so the server sets the HttpOnly cookie, then reload
+// shows the create section automatically via the auth-status check.
+tokenForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const token = tokenInput.value.trim();
+  if (!token) return;
+  location.href = '/?token=' + encodeURIComponent(token);
+});
+
+// ── Create room ────────────────────────────────────────────────────────────
 
 controllerBtn.addEventListener('click', () => {
   if (currentSessionId) window.open('/controller/', currentSessionId + 'C');
@@ -25,8 +87,7 @@ createBtn.addEventListener('click', async () => {
     if (!res.ok) throw new Error('Server error');
     const { sessionId } = await res.json();
     currentSessionId = sessionId;
-    createBtn.closest('.card').classList.add('hidden');
-    roomLinks.classList.remove('hidden');
+    showRoomLinks();
   } catch {
     createError.classList.remove('hidden');
     createBtn.disabled = false;
@@ -34,10 +95,17 @@ createBtn.addEventListener('click', async () => {
   }
 });
 
+// ── New room / Logout ──────────────────────────────────────────────────────
+
 newRoomBtn.addEventListener('click', () => {
   currentSessionId = null;
-  roomLinks.classList.add('hidden');
-  createBtn.closest('.card').classList.remove('hidden');
-  createBtn.disabled = false;
-  createBtn.textContent = 'Start Karaoke Night';
+  showCreate();
+});
+
+logoutBtn.addEventListener('click', () => {
+  fetch('/api/logout', { method: 'POST' })
+    .finally(() => {
+      currentSessionId = null;
+      showLogin();
+    });
 });
