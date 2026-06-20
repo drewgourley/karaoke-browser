@@ -6,7 +6,7 @@ let dragFrom = null;
 // Session ID is carried in window.name (set by the opener via window.open(url, id+'C')).
 // It is never in the page URL, so it doesn't appear in the address bar or browser history.
 const sessionId = window.name ? window.name.slice(0, -1) : null;
-if (!sessionId) { location.replace('/'); throw new Error('No session'); }
+if (!sessionId) { location.replace('/?redirect=' + encodeURIComponent('/controller/')); throw new Error('No session'); }
 
 document.getElementById('open-player-btn').addEventListener('click', () => {
   window.open('/player/', sessionId + 'P');

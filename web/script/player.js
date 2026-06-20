@@ -7,7 +7,7 @@
 
 // \u2500\u2500 Session \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 const sessionId = window.name ? window.name.slice(0, -1) : null;
-if (!sessionId) { location.replace('/'); throw new Error('No session'); }
+if (!sessionId) { location.replace('/?redirect=' + encodeURIComponent('/player/')); throw new Error('No session'); }
 
 let ytPlayer = null;
 let pendingVideoId = null;
