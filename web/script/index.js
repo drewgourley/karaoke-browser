@@ -16,6 +16,34 @@ const logoutBtn     = document.getElementById('logout-btn');
 let currentSessionId = null;
 let authMode = false; // true when AUTH_TOKEN is active on the server
 
+// ── Redirect helpers ──────────────────────────────────────────────────────
+
+const redirectTarget = new URLSearchParams(location.search).get('redirect');
+
+// Only allow same-site paths to prevent open-redirect abuse.
+const SAFE_PREFIXES = ['/controller/', '/player/', '/request/'];
+function isSafeRedirect(url) {
+  return typeof url === 'string' && SAFE_PREFIXES.some(p => url.startsWith(p));
+}
+
+function doRedirect(sessionId, target) {
+  const suffix = target.startsWith('/player') ? 'P' : 'C';
+  window.name = sessionId + suffix;
+  location.replace(target);
+}
+
+async function autoStartAndRedirect() {
+  try {
+    const res = await fetch('/api/session/create', { method: 'POST' });
+    if (!res.ok) throw new Error();
+    const { sessionId } = await res.json();
+    currentSessionId = sessionId;
+    doRedirect(sessionId, redirectTarget);
+  } catch {
+    showCreate();
+  }
+}
+
 // ── Boot: check auth status ────────────────────────────────────────────────
 
 fetch('/api/auth-status')
@@ -24,6 +52,9 @@ fetch('/api/auth-status')
     authMode = authRequired;
     if (authRequired && !authed) {
       showLogin();
+    } else if (isSafeRedirect(redirectTarget)) {
+      // Already authed and came from a protected page — skip straight there.
+      autoStartAndRedirect();
     } else {
       showCreate();
     }
@@ -77,7 +108,11 @@ tokenForm.addEventListener('submit', async e => {
       body: JSON.stringify({ hash }),
     });
     if (res.ok) {
-      showCreate();
+      if (isSafeRedirect(redirectTarget)) {
+        autoStartAndRedirect();
+      } else {
+        showCreate();
+      }
     } else {
       showLogin(true);
     }
@@ -104,7 +139,11 @@ createBtn.addEventListener('click', async () => {
     if (!res.ok) throw new Error('Server error');
     const { sessionId } = await res.json();
     currentSessionId = sessionId;
-    showRoomLinks();
+    if (isSafeRedirect(redirectTarget)) {
+      doRedirect(sessionId, redirectTarget);
+    } else {
+      showRoomLinks();
+    }
   } catch {
     createError.classList.remove('hidden');
     createBtn.disabled = false;

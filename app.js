@@ -49,7 +49,8 @@ function authMiddleware(req, res, next) {
 
   if (cookieToken === AUTH_HASH) return next();
 
-  res.status(401).send('Unauthorized');
+  // Kick the user back to the ingress point, preserving where they wanted to go.
+  res.redirect(302, '/?redirect=' + encodeURIComponent(req.originalUrl));
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
