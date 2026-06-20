@@ -11,10 +11,16 @@
 
 <header>
   <h1>🎤 Karaoke Controller</h1>
-  <button class="ghost" id="open-player-btn" title="Open the player in a new tab">🎬 Open Player</button>
-  <div class="status">
-    <div class="dot" id="dot"></div>
-    <span id="status-text">Connecting…</span>
+  <div class="header-right">
+    <button class="ghost" id="open-player-btn" title="Open the player in a new tab">🎬 Open Player</button>
+    <div class="status" id="player-up-badge" hidden>
+      <div class="dot on"></div>
+      <span>Player Up</span>
+    </div>
+    <div class="status">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">Connecting…</span>
+    </div>
   </div>
 </header>
 

@@ -166,7 +166,7 @@ function showIdle() {
 let ws;
 
 function connect() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/?s=' + encodeURIComponent(sessionId));
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/?s=' + encodeURIComponent(sessionId) + '&role=player');
 
   ws.onmessage = function (event) {
     let msg;

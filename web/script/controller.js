@@ -13,8 +13,10 @@ document.getElementById('open-player-btn').addEventListener('click', () => {
 });
 
 // ── Elements ───────────────────────────────────────────────────────────────
-const dot        = document.getElementById('dot');
-const statusText = document.getElementById('status-text');
+const dot           = document.getElementById('dot');
+const statusText    = document.getElementById('status-text');
+const openPlayerBtn = document.getElementById('open-player-btn');
+const playerUpBadge = document.getElementById('player-up-badge');
 const urlInput   = document.getElementById('url-input');
 const titleInput = document.getElementById('title-input');
 const addBtn     = document.getElementById('add-btn');
@@ -28,7 +30,7 @@ const clearBtn   = document.getElementById('clear-btn');
 let ws;
 
 function connect() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/?s=' + encodeURIComponent(sessionId));
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/?s=' + encodeURIComponent(sessionId) + '&role=controller');
 
   ws.onopen = () => {
     dot.className = 'dot on';
@@ -42,7 +44,12 @@ function connect() {
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === 'state') { state = msg; render(); }
+    if (msg.type === 'state') {
+      state = msg;
+      render();
+      openPlayerBtn.hidden = !!state.playerConnected;
+      playerUpBadge.hidden  = !state.playerConnected;
+    }
   };
 }
 

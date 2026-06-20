@@ -102,8 +102,21 @@ function broadcast(session, data) {
   }
 }
 
+function hasPlayer(session) {
+  for (const client of session.clients) {
+    if (client.role === 'player' && client.readyState === 1) return true;
+  }
+  return false;
+}
+
 function broadcastState(session) {
-  broadcast(session, { type: 'state', queue: session.queue, nowPlaying: session.nowPlaying, paused: session.paused });
+  broadcast(session, {
+    type: 'state',
+    queue: session.queue,
+    nowPlaying: session.nowPlaying,
+    paused: session.paused,
+    playerConnected: hasPlayer(session),
+  });
 }
 
 /** Extract a YouTube video ID from common URL formats. */
@@ -326,14 +339,20 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  const role = wsUrl.searchParams.get('role') || 'unknown';
+  ws.role = role;
+
   touchSession(session);
   session.clients.add(ws);
 
-  // Sync new client immediately
-  ws.send(JSON.stringify({ type: 'state', queue: session.queue, nowPlaying: session.nowPlaying, paused: session.paused }));
+  // Broadcast to all clients (including the new one) so controllers immediately
+  // learn about the updated playerConnected status.
+  broadcastState(session);
 
   ws.on('close', () => {
     session.clients.delete(ws);
+    // Let controllers know the player went away.
+    if (ws.role === 'player') broadcastState(session);
   });
 
   ws.on('message', raw => {
