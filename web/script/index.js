@@ -52,8 +52,9 @@ fetch('/api/auth-status')
     authMode = authRequired;
     if (authRequired && !authed) {
       showLogin();
-    } else if (isSafeRedirect(redirectTarget)) {
-      // Already authed and came from a protected page — skip straight there.
+    } else if (authRequired && isSafeRedirect(redirectTarget)) {
+      // Auth mode + already authed + came from a protected page.
+      // Session is deterministic in auth mode so it's safe to auto-proceed.
       autoStartAndRedirect();
     } else {
       showCreate();

@@ -110,6 +110,13 @@ function hasPlayer(session) {
   return false;
 }
 
+function hasController(session) {
+  for (const client of session.clients) {
+    if (client.role === 'controller' && client.readyState === 1) return true;
+  }
+  return false;
+}
+
 function broadcastState(session) {
   broadcast(session, {
     type: 'state',
@@ -117,6 +124,7 @@ function broadcastState(session) {
     nowPlaying: session.nowPlaying,
     paused: session.paused,
     playerConnected: hasPlayer(session),
+    controllerConnected: hasController(session),
   });
 }
 
@@ -353,8 +361,8 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     session.clients.delete(ws);
-    // Let controllers know the player went away.
-    if (ws.role === 'player') broadcastState(session);
+    // Let peers know when player or controller presence changes.
+    if (ws.role === 'player' || ws.role === 'controller') broadcastState(session);
   });
 
   ws.on('message', raw => {

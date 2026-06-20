@@ -18,19 +18,24 @@ let embedFailed = false;
 let shouldPauseOnPlay = false;
 let showingSlate = false;
 let userActivated = false;
+let controllerReady = false;
 let hideSlateTimer = null;
 
 // ── Start gate — one tap unlocks autoplay for the session ──────────────────
 document.getElementById('start-gate').addEventListener('click', () => {
-  userActivated = true;
+  if (!controllerReady) return; // not tappable until a controller is connected
   const gate = document.getElementById('start-gate');
+  if (!userActivated) {
+    userActivated = true;
+    if (pendingVideoId) {
+      const vid = pendingVideoId;
+      pendingVideoId = null;
+      loadVideo(vid);
+    }
+  }
+  // Dismiss the gate whether this is the first tap or a recovery tap.
   gate.classList.add('fading');
   setTimeout(() => { gate.style.display = 'none'; }, 450);
-  if (pendingVideoId) {
-    const vid = pendingVideoId;
-    pendingVideoId = null;
-    loadVideo(vid);
-  }
 });
 
 window.onYouTubeIframeAPIReady = function () {
@@ -161,6 +166,34 @@ function showIdle() {
   }
 }
 
+// ── Gate status ──────────────────────────────────────────────────────────────
+
+function updateGateStatus(controllerConnected) {
+  const gate    = document.getElementById('start-gate');
+  const dot     = document.getElementById('gate-controller-dot');
+  const openBtn = document.getElementById('gate-open-controller');
+  const label   = document.getElementById('start-gate-label');
+
+  controllerReady = !!controllerConnected;
+  dot.className   = 'gate-dot' + (controllerConnected ? ' on' : ' off');
+  openBtn.hidden  = !!controllerConnected;
+  label.hidden    = !controllerConnected;
+  gate.classList.toggle('gate-ready', !!controllerConnected);
+
+  if (userActivated) {
+    if (!controllerConnected && gate.style.display === 'none') {
+      // Controller dropped after gate was dismissed — bring it back so the
+      // DJ can see the status and tap Open Controller to recover.
+      gate.style.display = 'flex';
+      gate.classList.remove('fading');
+    } else if (controllerConnected && gate.style.display !== 'none') {
+      // Controller reconnected — auto-dismiss the gate.
+      gate.classList.add('fading');
+      setTimeout(() => { gate.style.display = 'none'; }, 450);
+    }
+  }
+}
+
 // ── WebSocket ──────────────────────────────────────────────────────────────
 
 let ws;
@@ -178,6 +211,7 @@ function connect() {
     }
 
     if (msg.type === 'state') {
+      updateGateStatus(!!msg.controllerConnected);
       if (msg.nowPlaying) {
         currentTitle  = msg.nowPlaying.title  || '';
         currentSinger = msg.nowPlaying.singer || '';
@@ -205,6 +239,12 @@ function connect() {
 }
 
 connect();
+
+// ── Open Controller button ──────────────────────────────────────────────────────
+document.getElementById('gate-open-controller').addEventListener('click', e => {
+  e.stopPropagation(); // don't trigger the start-gate tap-to-begin
+  window.open('/controller/', sessionId + 'C');
+});
 
 // ── Fullscreen button ──────────────────────────────────────────────────────
 (function () {

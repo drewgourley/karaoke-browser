@@ -25,7 +25,18 @@
   </div>
   <div id="start-gate">
     <div id="start-gate-icon">🎤</div>
-    <div id="start-gate-label">Tap to begin</div>
+    <div id="start-gate-label" hidden>Tap to begin</div>
+    <div id="gate-status">
+      <div class="gate-badge">
+        <div class="gate-dot on"></div>
+        <span>Player</span>
+      </div>
+      <div class="gate-badge" id="gate-controller-badge">
+        <div class="gate-dot" id="gate-controller-dot"></div>
+        <span>Controller</span>
+      </div>
+    </div>
+    <button id="gate-open-controller" hidden>🎤 Open Controller</button>
   </div>
   <button id="fullscreen-btn" title="Enter fullscreen">⛶</button>
   <script src="../script/player.js"></script>
