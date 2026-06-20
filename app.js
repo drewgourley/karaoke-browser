@@ -192,8 +192,9 @@ app.post('/api/login', (req, res) => {
     return res.status(401).json({ ok: false });
   }
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const maxAge = 30 * 24 * 60 * 60; // 30 days — survives PWA relaunches
   res.setHeader('Set-Cookie',
-    `kp_auth=${AUTH_HASH}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`);
+    `kp_auth=${AUTH_HASH}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure ? '; Secure' : ''}`);
   res.json({ ok: true });
 });
 
