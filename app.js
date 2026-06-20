@@ -5,6 +5,33 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const path = require('path');
+const QRCode = require('qrcode');
+
+// ── Logger ──────────────────────────────────────────────────────────────
+// Set LOG_LEVEL in .env to: error | warn | info (default) | debug
+const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
+const LOG_COLORS = { error: '\x1b[31m', warn: '\x1b[33m', info: '\x1b[36m', debug: '\x1b[90m' };
+const RESET = '\x1b[0m';
+const logLevelNum = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.info;
+const useTTYColors = process.stdout.isTTY;
+
+function log(level, ...args) {
+  if (LOG_LEVELS[level] > logLevelNum) return;
+  const ts = new Date().toISOString();
+  const c = useTTYColors ? (LOG_COLORS[level] || '') : '';
+  const r = useTTYColors ? RESET : '';
+  console.log(`${c}[${ts}] ${level.toUpperCase().padEnd(5)}${r}`, ...args);
+}
+
+const logger = {
+  error: (...a) => log('error', ...a),
+  warn:  (...a) => log('warn',  ...a),
+  info:  (...a) => log('info',  ...a),
+  debug: (...a) => log('debug', ...a),
+};
+
+// Short-form session ID for display (first 8 hex chars).
+function sid(id) { return id ? id.slice(0, 8) + '…' : '(none)'; }
 
 const app = express();
 app.set('trust proxy', 1); // trust X-Forwarded-* headers from reverse proxy
@@ -41,8 +68,9 @@ function authMiddleware(req, res, next) {
   const p = req.path;
   const cookieToken = getCookie(req, 'kp_auth');
 
-  // Root index is always accessible — it is the login/entry page.
+  // Root index and the audience request page are always accessible.
   if (p === '/' || p === '/index.html') return next();
+  if (p === '/request/' || p === '/request/index.html') return next();
 
   // Only gate HTML entry points; CSS/JS assets load freely.
   if (!p.endsWith('/') && !p.endsWith('.html')) return next();
@@ -50,6 +78,7 @@ function authMiddleware(req, res, next) {
   if (cookieToken === AUTH_HASH) return next();
 
   // Kick the user back to the ingress point, preserving where they wanted to go.
+  logger.debug(`Auth redirect ${req.path} → / for ${req.ip}`);
   res.redirect(302, '/?redirect=' + encodeURIComponent(req.originalUrl));
 }
 
@@ -66,9 +95,12 @@ function createSession() {
     nowPlaying: null,
     paused: false,
     nextId: 1,
+    requests: [],
+    nextRequestId: 1,
     clients: new Set(),
     lastActivity: Date.now(),
   });
+  logger.info(`Session created: ${sid(id)}`);
   return id;
 }
 
@@ -83,10 +115,16 @@ function touchSession(session) {
 // Periodic cleanup: remove sessions idle longer than SESSION_TTL_MS with no active connections
 setInterval(() => {
   const now = Date.now();
+  let expired = 0;
   for (const [id, session] of sessions) {
     if (session.clients.size === 0 && now - session.lastActivity > SESSION_TTL_MS) {
       sessions.delete(id);
+      expired++;
+      logger.debug(`Session expired: ${sid(id)}`);
     }
+  }
+  if (expired > 0 || logLevelNum >= LOG_LEVELS.debug) {
+    logger.debug(`Session cleanup: removed ${expired}, active ${sessions.size}`);
   }
 }, 30 * 60 * 1000);
 
@@ -125,6 +163,7 @@ function broadcastState(session) {
     paused: session.paused,
     playerConnected: hasPlayer(session),
     controllerConnected: hasController(session),
+    requests: session.requests,
   });
 }
 
@@ -198,12 +237,14 @@ app.post('/api/login', (req, res) => {
   if (!AUTH_HASH) return res.json({ ok: true }); // no auth configured
   const { hash } = req.body || {};
   if (typeof hash !== 'string' || hash !== AUTH_HASH) {
+    logger.warn(`Login failed from ${req.ip}`);
     return res.status(401).json({ ok: false });
   }
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
   const maxAge = 30 * 24 * 60 * 60; // 30 days — survives PWA relaunches
   res.setHeader('Set-Cookie',
     `kp_auth=${AUTH_HASH}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure ? '; Secure' : ''}`);
+  logger.info(`Login success from ${req.ip}`);
   res.json({ ok: true });
 });
 
@@ -225,9 +266,14 @@ app.post('/api/session/create', (req, res) => {
         nowPlaying: null,
         paused: false,
         nextId: 1,
+        requests: [],
+        nextRequestId: 1,
         clients: new Set(),
         lastActivity: Date.now(),
       });
+      logger.info(`Session created (auth mode): ${sid(id)}`);
+    } else {
+      logger.debug(`Session resumed (auth mode): ${sid(id)}`);
     }
   } else {
     id = createSession();
@@ -289,6 +335,7 @@ app.get('/api/search', async (req, res) => {
   const q = sanitiseTitle(raw).slice(0, 150);
   if (!q) return res.json({ results: [] });
 
+  logger.debug(`Search q="${q}"`);
   try {
     // Step 1: search
     const searchUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet' +
@@ -328,29 +375,58 @@ app.get('/api/search', async (req, res) => {
 
     res.json({ results });
   } catch (e) {
-    console.error('Search error:', e.message);
+    logger.error('Search error:', e.message);
     res.status(500).json({ error: 'Search failed — check server logs' });
+  }
+});
+
+// QR code for any URL (used by the index page to generate the request-link QR).
+app.get('/api/qr', async (req, res) => {
+  const data = req.query.data;
+  if (!data || typeof data !== 'string' || data.length > 2048) {
+    return res.status(400).json({ error: 'Missing or invalid data param' });
+  }
+  try {
+    const dataUrl = await QRCode.toDataURL(data, {
+      width: 256,
+      margin: 2,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+    logger.debug(`QR generated for: ${data.slice(0, 80)}`);
+    // Cache for 5 minutes — the URL is stable for the life of a session.
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({ dataUrl });
+  } catch (e) {
+    logger.error('QR generation error:', e.message);
+    res.status(500).json({ error: 'QR generation failed' });
   }
 }); 
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
 wss.on('connection', (ws, req) => {
-  if (AUTH_HASH && getCookie(req, 'kp_auth') !== AUTH_HASH) {
+  const wsUrl = new URL(req.url, 'http://localhost');
+  const role = wsUrl.searchParams.get('role') || 'unknown';
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+
+  // Audience request connections are authenticated by the unguessable session ID
+  // in ?s= alone — same rationale as exempting /request/ from the HTML auth gate.
+  if (AUTH_HASH && role !== 'request' && getCookie(req, 'kp_auth') !== AUTH_HASH) {
+    logger.warn(`WS auth failed  role=${role} ip=${ip}`);
     ws.close(4001, 'Unauthorized');
     return;
   }
 
-  const wsUrl = new URL(req.url, 'http://localhost');
   const sessionId = wsUrl.searchParams.get('s');
   const session = sessionId ? getSession(sessionId) : null;
   if (!session) {
+    logger.warn(`WS unknown session  role=${role} sid=${sid(sessionId)} ip=${ip}`);
     ws.close(4004, 'Session not found');
     return;
   }
 
-  const role = wsUrl.searchParams.get('role') || 'unknown';
   ws.role = role;
+  logger.info(`WS connect    role=${role.padEnd(10)} session=${sid(sessionId)} ip=${ip}`);
 
   touchSession(session);
   session.clients.add(ws);
@@ -359,8 +435,9 @@ wss.on('connection', (ws, req) => {
   // learn about the updated playerConnected status.
   broadcastState(session);
 
-  ws.on('close', () => {
+  ws.on('close', (code) => {
     session.clients.delete(ws);
+    logger.info(`WS disconnect role=${role.padEnd(10)} session=${sid(sessionId)} code=${code}`);
     // Let peers know when player or controller presence changes.
     if (ws.role === 'player' || ws.role === 'controller') broadcastState(session);
   });
@@ -369,6 +446,7 @@ wss.on('connection', (ws, req) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     touchSession(session);
+    logger.debug(`WS msg        type=${String(msg.type).padEnd(14)} session=${sid(sessionId)}`);
 
     switch (msg.type) {
       case 'add': {
@@ -448,6 +526,25 @@ wss.on('connection', (ws, req) => {
       case 'video-error':
         if (session.nowPlaying) { session.nowPlaying.embedFailed = true; broadcastState(session); }
         break;
+
+      case 'request': {
+        const title  = sanitiseTitle(msg.title  || '').slice(0, 120);
+        if (!title) return;
+        const name   = sanitiseTitle(msg.name   || '').slice(0, 120);
+        const artist = sanitiseTitle(msg.artist || '').slice(0, 120);
+        session.requests.push({ id: session.nextRequestId++, name, artist, title });
+        broadcastState(session);
+        break;
+      }
+
+      case 'dismiss-request': {
+        const idx = session.requests.findIndex(r => r.id === msg.id);
+        if (idx !== -1) {
+          session.requests.splice(idx, 1);
+          broadcastState(session);
+        }
+        break;
+      }
     }
   });
 });
@@ -456,6 +553,8 @@ wss.on('connection', (ws, req) => {
 
 const PORT = process.env.PORT || 3444;
 server.listen(PORT, () => {
-  console.log(`\nKaraoke Browser running at http://localhost:${PORT}`);
-  console.log(`  Create a room at: http://localhost:${PORT}/\n`);
+  logger.info(`Karaoke Browser listening on port ${PORT}`);
+  logger.info(`  Open: http://localhost:${PORT}/`);
+  logger.info(`  Auth: ${AUTH_HASH ? 'enabled' : 'disabled'}`);
+  logger.info(`  Log level: ${process.env.LOG_LEVEL || 'info'}`);
 });

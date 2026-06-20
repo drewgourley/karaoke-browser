@@ -17,14 +17,16 @@ const dot           = document.getElementById('dot');
 const statusText    = document.getElementById('status-text');
 const openPlayerBtn = document.getElementById('open-player-btn');
 const playerUpBadge = document.getElementById('player-up-badge');
-const urlInput   = document.getElementById('url-input');
-const titleInput = document.getElementById('title-input');
-const addBtn     = document.getElementById('add-btn');
-const fetchBtn   = document.getElementById('fetch-btn');
-const npEl       = document.getElementById('now-playing');
-const queueEl    = document.getElementById('queue-list');
-const qCount     = document.getElementById('q-count');
-const clearBtn   = document.getElementById('clear-btn');
+const urlInput      = document.getElementById('url-input');
+const titleInput    = document.getElementById('title-input');
+const addBtn        = document.getElementById('add-btn');
+const fetchBtn      = document.getElementById('fetch-btn');
+const npEl          = document.getElementById('now-playing');
+const queueEl       = document.getElementById('queue-list');
+const qCount        = document.getElementById('q-count');
+const clearBtn      = document.getElementById('clear-btn');
+const reqList       = document.getElementById('request-list');
+const reqCount      = document.getElementById('req-count');
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let ws;
@@ -71,6 +73,7 @@ function esc(s) {
 function render() {
   renderNP();
   renderQueue();
+  renderRequests();
 }
 
 function renderNP() {
@@ -173,7 +176,58 @@ function renderQueue() {
     });
   });
 }
+// ── Requests ──────────────────────────────────────────────────────────────
+let pendingRequestName = null;
+let pendingGrantId    = null;
 
+function renderRequests() {
+  const requests = state.requests || [];
+  reqCount.textContent = requests.length;
+  if (requests.length === 0) {
+    reqList.innerHTML = '<li class="empty">No requests yet</li>';
+    return;
+  }
+  reqList.innerHTML = requests.map((req, i) =>
+    '<li class="req-item' + (req.id === pendingGrantId ? ' req-granting' : '') + '">' +
+      '<div class="req-meta">' +
+        (req.name   ? '<span class="req-name">🎤 ' + esc(req.name)   + '</span>' : '') +
+        (req.artist ? '<span class="req-artist">'           + esc(req.artist) + '</span>' : '') +
+        '<span class="req-title">'                          + esc(req.title)  + '</span>' +
+      '</div>' +
+      '<div class="req-actions">' +
+        '<button class="req-grant-btn' + (req.id === pendingGrantId ? ' req-grant-btn--active' : '') + '" data-i="' + i + '">Grant</button>' +
+        '<button class="ghost req-dismiss-btn" data-i="' + i + '">×</button>' +
+      '</div>' +
+    '</li>'
+  ).join('');
+
+  reqList.querySelectorAll('.req-grant-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const req = (state.requests || [])[parseInt(btn.dataset.i)];
+      if (!req) return;
+      // Mark as being granted
+      pendingGrantId = req.id;
+      renderRequests();
+      // Switch to search tab
+      tabSearch.classList.add('active');
+      tabUrl.classList.remove('active');
+      panelSearch.style.display = '';
+      panelUrl.style.display = 'none';
+      // Pre-fill query and store singer name for the modal
+      searchInput.value = [req.artist, req.title].filter(Boolean).join(' ');
+      pendingRequestName = req.name || null;
+      searchBtn.click();
+    });
+  });
+
+  reqList.querySelectorAll('.req-dismiss-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const req = (state.requests || [])[parseInt(btn.dataset.i)];
+      if (!req) return;
+      send({ type: 'dismiss-request', id: req.id });
+    });
+  });
+}
 // ── Add Song ───────────────────────────────────────────────────────────────
 function addSong() {
   const url   = urlInput.value.trim();
@@ -298,7 +352,8 @@ let pendingAdd = null; // { url, title, onConfirm }
 function showSingerModal(url, title, onConfirm) {
   pendingAdd = { url, title, onConfirm };
   modalSongEl.textContent = title;
-  singerInput.value = '';
+  singerInput.value = pendingRequestName || '';
+  pendingRequestName = null;
   singerModal.style.display = 'flex';
   setTimeout(() => singerInput.focus(), 50);
 }
@@ -308,6 +363,11 @@ function confirmModal() {
   const { url, title, onConfirm } = pendingAdd;
   const singer = singerInput.value.trim();
   send({ type: 'add', url, title, singer: singer || undefined });
+  // Auto-dismiss the request that was being granted.
+  if (pendingGrantId !== null) {
+    send({ type: 'dismiss-request', id: pendingGrantId });
+    pendingGrantId = null;
+  }
   if (onConfirm) onConfirm();
   pendingAdd = null;
   singerModal.style.display = 'none';
@@ -315,6 +375,11 @@ function confirmModal() {
 
 function closeModal() {
   pendingAdd = null;
+  // Un-highlight the request if the user cancels.
+  if (pendingGrantId !== null) {
+    pendingGrantId = null;
+    renderRequests();
+  }
   singerModal.style.display = 'none';
 }
 

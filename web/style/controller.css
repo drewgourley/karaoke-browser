@@ -93,7 +93,7 @@ header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 main {
-  max-width: 1200px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 1.5rem 1rem;
   display: grid;
@@ -366,6 +366,53 @@ a.btn:hover { filter: brightness(1.2); }
 .qi-info  { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
 .qi-title { font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qi-singer { font-size: 0.7rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Request items ──────────────────────────────────────────────────────────── */
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.req-item:last-child { border-bottom: none; }
+.req-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.req-name   { font-size: 0.72rem; color: var(--accent); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.req-artist { font-size: 0.72rem; color: var(--muted);  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.req-title  { font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.req-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.req-grant-btn {
+  font-size: 0.72rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--accent);
+  color: #0f0f1a;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background 0.2s, opacity 0.2s;
+}
+.req-grant-btn:hover { background: var(--accent2); }
+
+/* Granted / in-progress highlight */
+.req-item.req-granting {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 6px;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+  margin: 0 -0.4rem;
+}
+.req-grant-btn--active {
+  opacity: 0.6;
+  cursor: default;
+}
 
 /* ── Singer modal ───────────────────────────────────────────────────────── */
 .modal-overlay {

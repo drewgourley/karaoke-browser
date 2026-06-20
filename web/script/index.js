@@ -12,6 +12,10 @@ const controllerBtn = document.getElementById('controller-btn');
 const playerBtn     = document.getElementById('player-btn');
 const newRoomBtn    = document.getElementById('new-room-btn');
 const logoutBtn     = document.getElementById('logout-btn');
+const requestLinkRow  = document.getElementById('request-link-row');
+const requestUrlInput = document.getElementById('request-url');
+const copyRequestBtn  = document.getElementById('copy-request-btn');
+const requestQr       = document.getElementById('request-qr');
 
 let currentSessionId = null;
 let authMode = false; // true when AUTH_TOKEN is active on the server
@@ -88,6 +92,20 @@ function showRoomLinks() {
   // In auth mode there's only one room — offer logout, not a new room.
   newRoomBtn.classList.toggle('hidden', authMode);
   logoutBtn.classList.toggle('hidden', !authMode);
+  // Populate and reveal the request share link.
+  const requestUrl = location.origin + '/request/?s=' + encodeURIComponent(currentSessionId);
+  requestUrlInput.value = requestUrl;
+  requestLinkRow.classList.remove('hidden');
+  // Fetch and display the QR code.
+  fetch('/api/qr?data=' + encodeURIComponent(requestUrl))
+    .then(r => r.json())
+    .then(({ dataUrl }) => {
+      if (dataUrl) {
+        requestQr.src = dataUrl;
+        requestQr.hidden = false;
+      }
+    })
+    .catch(() => { /* QR is optional; silently skip on failure */ });
 }
 
 // ── Login ──────────────────────────────────────────────────────────────────
@@ -165,4 +183,16 @@ logoutBtn.addEventListener('click', () => {
       currentSessionId = null;
       showLogin();
     });
+});
+
+// ── Copy request link ────────────────────────────────────────────────
+
+copyRequestBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(requestUrlInput.value).then(() => {
+    const orig = copyRequestBtn.textContent;
+    copyRequestBtn.textContent = 'Copied ✓';
+    setTimeout(() => { copyRequestBtn.textContent = orig; }, 2000);
+  }).catch(() => {
+    requestUrlInput.select();
+  });
 });
