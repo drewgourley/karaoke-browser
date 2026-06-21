@@ -52,13 +52,15 @@ Session IDs are 40-character random hex strings. The request page uses the sessi
 - **Node.js 18+**
 - A **YouTube Data API v3 key** (free) for song search. URL-paste and the full queue work without one.
 
-### Getting a YouTube API key
+### Getting YouTube API keys
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com/)
 2. Create a project → **APIs & Services** → **Enable APIs**
 3. Search for **YouTube Data API v3** and enable it
 4. Go to **Credentials** → **Create credentials** → **API key**
-5. (Recommended) Restrict the key to the YouTube Data API v3 and your server's IP
+5. Repeat to create as many keys as you need (each gets 10,000 units/day free; search costs 100 units)
+6. (Recommended) Restrict each key to the YouTube Data API v3 and your server's IP
+7. Paste all keys comma-separated into `YOUTUBE_API_KEYS` in your `.env`
 
 ---
 
@@ -69,7 +71,7 @@ git clone <repo-url>
 cd karaoke-browser
 npm install
 cp .env.example .env
-# open .env and add your YOUTUBE_API_KEY
+# open .env and add your YOUTUBE_API_KEYS
 npm start
 ```
 
@@ -81,12 +83,50 @@ Open **http://localhost:3444** in your browser.
 
 Copy `.env.example` to `.env` and edit as needed.
 
+### YouTube / Search
+
 | Variable | Default | Description |
 |---|---|---|
-| `YOUTUBE_API_KEY` | — | YouTube Data API v3 key. Required for search. |
+| `YOUTUBE_API_KEYS` | — | Comma-separated YouTube Data API v3 keys. Round-robin with automatic quota retirement. Required for search. |
+| `SEARCH_CACHE_TTL_MIN` | `60` | How long (minutes) search results are cached. Cached hits cost zero API quota. |
+
+### Server
+
+| Variable | Default | Description |
+|---|---|---|
 | `PORT` | `3444` | HTTP port the server listens on. |
-| `AUTH_TOKEN` | _(disabled)_ | Password for the room. See [Auth](#auth-optional) below. |
 | `LOG_LEVEL` | `info` | Log verbosity: `error` / `warn` / `info` / `debug`. |
+
+### Auth
+
+| Variable | Default | Description |
+|---|---|---|
+| `AUTH_TOKEN` | _(disabled)_ | Password for the room. See [Auth](#auth-optional) below. |
+
+### Sessions
+
+| Variable | Default | Description |
+|---|---|---|
+| `MAX_SESSIONS` | `500` | Maximum concurrent in-memory sessions. Returns HTTP 503 when full. |
+| `SESSION_TTL_HOURS` | `4` | Hours of inactivity before a session is eligible for cleanup. |
+
+### Rate limits
+
+All per-IP unless noted. `_MAX` = request ceiling within the window; `_WINDOW_MIN` = window length in minutes.
+
+| Variable | Default | Protects |
+|---|---|---|
+| `SESSION_RATE_MAX` | `10` | Session creation per IP |
+| `SESSION_RATE_WINDOW_MIN` | `15` | ↑ window |
+| `SEARCH_RATE_MAX` | `20` | `/api/search` per IP |
+| `SEARCH_RATE_WINDOW_MIN` | `10` | ↑ window |
+| `TITLE_RATE_MAX` | `30` | `/api/title` per IP |
+| `TITLE_RATE_WINDOW_MIN` | `1` | ↑ window |
+| `QR_RATE_MAX` | `20` | `/api/qr` per IP |
+| `QR_RATE_WINDOW_MIN` | `1` | ↑ window |
+| `MAX_SESSION_REQUESTS` | `100` | Inbox cap per session (WS, silent drop) |
+| `WS_REQ_RATE_MAX` | `10` | Request messages per WS client |
+| `WS_REQ_RATE_WINDOW_MIN` | `1` | ↑ window (disconnects at 4029) |
 
 ---
 
@@ -154,8 +194,29 @@ pm2 startup   # auto-start on reboot
 - Sessions are created on demand from the index page.
 - In **auth mode** there is one fixed session for the life of the server (keyed to the token hash). Restarting the server with the same `AUTH_TOKEN` resumes the same session.
 - In **no-auth mode** each "Start Karaoke Night" click creates a fresh session with a new random ID.
-- Sessions idle for more than **4 hours** with no active WebSocket connections are cleaned up automatically.
-- Queue, now-playing, and song requests all persist in memory for the life of the session. Restarting the server clears them.
+- Sessions idle for longer than `SESSION_TTL_HOURS` (default: 4 h) with no active WebSocket connections are cleaned up automatically.
+- Queue, now-playing, and song requests all persist in memory for the life of the session. Sessions are saved to disk every 60 seconds and restored on restart, so a server restart no longer wipes active sessions.
+
+---
+
+## Hardening for public deployments
+
+The following protections are built in and all tunable via `.env`:
+
+| Protection | Default | Env var(s) |
+|---|---|---|
+| Session creation rate limit | 10 per IP / 15 min | `SESSION_RATE_MAX`, `SESSION_RATE_WINDOW_MIN` |
+| Global session cap | 500 sessions (HTTP 503) | `MAX_SESSIONS` |
+| Song request inbox cap | 100 per session (silent drop) | `MAX_SESSION_REQUESTS` |
+| WS request flood guard | 10 msg/min per client (disconnects 4029) | `WS_REQ_RATE_MAX`, `WS_REQ_RATE_WINDOW_MIN` |
+| `/api/search` rate limit | 20 per IP / 10 min | `SEARCH_RATE_MAX`, `SEARCH_RATE_WINDOW_MIN` |
+| `/api/title` rate limit | 30 per IP / min | `TITLE_RATE_MAX`, `TITLE_RATE_WINDOW_MIN` |
+| `/api/qr` rate limit | 20 per IP / min | `QR_RATE_MAX`, `QR_RATE_WINDOW_MIN` |
+| YouTube key rotation | Round-robin; auto-retire on 403 until midnight UTC | `YOUTUBE_API_KEYS` |
+| Search result cache | 60-minute TTL; cached hits cost zero API quota | `SEARCH_CACHE_TTL_MIN` |
+| Session persistence | Save every 60 s + on SIGTERM/SIGINT; restore on restart | — |
+
+All rate limiters are in-process `Map`s. If you run multiple Node.js instances behind a load balancer, replace them with a shared store (e.g. Redis + `express-rate-limit`'s Redis store).
 
 ---
 
@@ -200,14 +261,14 @@ web/
 
 ## API reference
 
-| Method | Path | Auth required | Description |
+| Method | Path | Notes | Description |
 |---|---|---|---|
-| `GET` | `/api/auth-status` | No | Returns `{ authRequired, authed }` |
-| `POST` | `/api/login` | No | Body: `{ hash }`. Sets auth cookie. |
-| `POST` | `/api/logout` | No | Expires auth cookie. |
-| `POST` | `/api/session/create` | Yes (if auth enabled) | Returns `{ sessionId }` |
-| `GET` | `/api/title?url=` | Yes | Resolves a YouTube URL to a clean title. |
-| `GET` | `/api/search?q=` | Yes | YouTube search. Returns `{ results }`. |
-| `GET` | `/api/qr?data=` | No | Returns `{ dataUrl }` (PNG data URL). |
+| `GET` | `/api/auth-status` | Public | Returns `{ authRequired, authed }` |
+| `POST` | `/api/login` | Public | Body: `{ hash }`. Sets 30-day auth cookie. |
+| `POST` | `/api/logout` | Public | Expires auth cookie. |
+| `POST` | `/api/session/create` | Rate-limited | Returns `{ sessionId }`. 10 req/IP/15 min by default. |
+| `GET` | `/api/title?url=` | Rate-limited | Resolves a YouTube URL to a clean title. 30 req/IP/min. |
+| `GET` | `/api/search?q=` | Rate-limited | YouTube search with key rotation + result cache. Returns `{ results }`. 20 req/IP/10 min. |
+| `GET` | `/api/qr?data=` | Rate-limited | Generates a QR code PNG. Returns `{ dataUrl }`. 20 req/IP/min. |
 
 WebSocket connects to `/?s=<sessionId>&role=<controller|player|request>`.

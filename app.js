@@ -2,9 +2,11 @@
 require('dotenv').config();
 
 const express = require('express');
+const helmet  = require('helmet');
 const { WebSocketServer } = require('ws');
 const http = require('http');
-const path = require('path');
+const path  = require('path');
+const fs    = require('fs');
 const QRCode = require('qrcode');
 
 // ── Logger ──────────────────────────────────────────────────────────────
@@ -31,12 +33,136 @@ const logger = {
 };
 
 // Short-form session ID for display (first 8 hex chars).
-function sid(id) { return id ? id.slice(0, 8) + '…' : '(none)'; }
+function sid(id) { return id ? id.slice(0, 8) + '\u2026' : '(none)'; }
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+// Lightweight in-memory rate limiter (single-process). For multi-instance
+// deployments, back this with a shared store (e.g. Redis) instead.
+function makeRateLimiter({ windowMs, max, message = 'Too many requests — try again later' }) {
+  const hits = new Map(); // ip → { count, resetAt }
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, e] of hits) if (now >= e.resetAt) hits.delete(ip);
+  }, windowMs).unref();
+  return function rateLimiter(req, res, next) {
+    const ip  = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    let e = hits.get(ip);
+    if (!e || now >= e.resetAt) { e = { count: 0, resetAt: now + windowMs }; hits.set(ip, e); }
+    if (++e.count > max) {
+      logger.warn(`Rate limit  ip=${ip}  path=${req.path}`);
+      return res.status(429).json({ error: message });
+    }
+    next();
+  };
+}
+
+const MAX_SESSIONS         = Number(process.env.MAX_SESSIONS)         || 500;
+const MAX_SESSION_REQUESTS = Number(process.env.MAX_SESSION_REQUESTS) || 100; // max pending requests per session inbox
+const WS_REQ_RATE_MAX       = Number(process.env.WS_REQ_RATE_MAX)       || 10;  // max request messages per client per window
+const WS_REQ_RATE_WINDOW_MS  = (Number(process.env.WS_REQ_RATE_WINDOW_MIN)  || 1) * 60_000;
+const WS_CONN_RATE_MAX       = Number(process.env.WS_CONN_RATE_MAX)       || 60;  // max new WS connections per IP per window
+const WS_CONN_RATE_WINDOW_MS = (Number(process.env.WS_CONN_RATE_WINDOW_MIN) || 1) * 60_000;
+
+// Per-route HTTP rate limiters.
+const createSessionLimiter = makeRateLimiter({
+  windowMs: (Number(process.env.SESSION_RATE_WINDOW_MIN) || 15) * 60_000,
+  max:       Number(process.env.SESSION_RATE_MAX)        || 10,
+  message: 'Too many sessions created from this IP — try again later',
+});
+const titleLimiter = makeRateLimiter({
+  windowMs: (Number(process.env.TITLE_RATE_WINDOW_MIN) || 1) * 60_000,
+  max:       Number(process.env.TITLE_RATE_MAX)        || 30,
+});
+const qrLimiter = makeRateLimiter({
+  windowMs: (Number(process.env.QR_RATE_WINDOW_MIN) || 1) * 60_000,
+  max:       Number(process.env.QR_RATE_MAX)        || 20,
+});
+const searchLimiter = makeRateLimiter({
+  windowMs: (Number(process.env.SEARCH_RATE_WINDOW_MIN) || 10) * 60_000,
+  max:       Number(process.env.SEARCH_RATE_MAX)        || 20,
+});
+
+// ── YouTube API key pool ───────────────────────────────────────────────────────────
+// Comma-separated list in YOUTUBE_API_KEYS. Keys are used round-robin and
+// retired automatically when the daily quota is hit (403); they revive at
+// midnight UTC when Google resets quotas.
+const YT_KEYS = (process.env.YOUTUBE_API_KEYS || '')
+  .split(',').map(k => k.trim()).filter(Boolean);
+if (!YT_KEYS.length) logger.warn('No YOUTUBE_API_KEYS configured — search will be unavailable');
+
+const retiredKeys = new Map(); // key → revive-at timestamp
+let keyIndex = 0;
+
+function retireUntilMidnightUTC() {
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+}
+
+function getNextKey() {
+  const now = Date.now();
+  for (const [k, until] of retiredKeys) if (now >= until) retiredKeys.delete(k);
+  const n = YT_KEYS.length;
+  for (let i = 0; i < n; i++) {
+    const key = YT_KEYS[(keyIndex + i) % n];
+    if (!retiredKeys.has(key)) {
+      keyIndex = (keyIndex + i + 1) % n;
+      return key;
+    }
+  }
+  return null; // all retired
+}
+
+function retireKey(key) {
+  retiredKeys.set(key, retireUntilMidnightUTC());
+  const remaining = YT_KEYS.filter(k => !retiredKeys.has(k)).length;
+  if (remaining === 0) {
+    logger.warn('All YouTube API keys exhausted — search unavailable until midnight UTC');
+  } else {
+    logger.warn(`YouTube key …${key.slice(-4)} quota exceeded — retired until midnight UTC (${remaining} key(s) remaining)`);
+  }
+}
+
+// ── Search result cache ───────────────────────────────────────────────────────────
+const SEARCH_CACHE_TTL_MS = (Number(process.env.SEARCH_CACHE_TTL_MIN) || 60) * 60_000;
+const searchCache = new Map(); // normalised query → { results, ts }
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of searchCache) if (now - v.ts > SEARCH_CACHE_TTL_MS) searchCache.delete(k);
+}, 10 * 60_000).unref();
 
 const app = express();
 app.set('trust proxy', 1); // trust X-Forwarded-* headers from reverse proxy
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+
+// ── WS connection rate limiter ────────────────────────────────────────────────
+// Runs before the WebSocket handshake completes so a flood of upgrade requests
+// from a single IP is rejected at the TCP level, not after socket creation.
+const wsConnHits = new Map(); // ip → { count, resetAt }
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, e] of wsConnHits) if (now >= e.resetAt) wsConnHits.delete(ip);
+}, WS_CONN_RATE_WINDOW_MS).unref();
+
+function checkWsConnLimit(ip) {
+  const now = Date.now();
+  let e = wsConnHits.get(ip);
+  if (!e || now >= e.resetAt) { e = { count: 0, resetAt: now + WS_CONN_RATE_WINDOW_MS }; wsConnHits.set(ip, e); }
+  return ++e.count <= WS_CONN_RATE_MAX;
+}
+
+const wss = new WebSocketServer({
+  server,
+  verifyClient: ({ req }, done) => {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+    if (!checkWsConnLimit(ip)) {
+      logger.warn(`WS conn rate limit  ip=${ip}`);
+      done(false, 429, 'Too Many Requests');
+      return;
+    }
+    done(true);
+  },
+});
 
 const { randomBytes, createHash } = require('crypto');
 
@@ -86,9 +212,13 @@ function authMiddleware(req, res, next) {
 // Map<sessionId, { queue, nowPlaying, paused, nextId, clients: Set<ws>, lastActivity }>
 
 const sessions = new Map();
-const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours of inactivity
+const SESSION_TTL_MS = (Number(process.env.SESSION_TTL_HOURS) || 4) * 60 * 60 * 1000;
 
 function createSession() {
+  if (sessions.size >= MAX_SESSIONS) {
+    logger.warn(`Session cap reached (${MAX_SESSIONS}) — rejecting new session`);
+    return null;
+  }
   const id = randomBytes(20).toString('hex'); // 40-char hex, unguessable
   sessions.set(id, {
     queue: [],
@@ -128,8 +258,30 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000);
 
+app.use(helmet({
+  // YouTube iframes don't send CORP headers, so COEP: require-corp would
+  // block the player. Disable it; all other helmet defaults remain active.
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:  ["'self'"],
+      // player.js injects the YouTube IFrame API script dynamically
+      scriptSrc:   ["'self'", 'https://www.youtube.com', 'https://s.ytimg.com'],
+      // inline style="" attributes are used throughout the HTML
+      styleSrc:    ["'self'", "'unsafe-inline'"],
+      // QR codes are data: URIs; thumbnails come from YouTube's CDN
+      imgSrc:      ["'self'", 'data:', 'https://img.youtube.com', 'https://i.ytimg.com', 'https://s.ytimg.com'],
+      // YouTube player iframe
+      frameSrc:    ['https://www.youtube.com'],
+      // WebSocket connections back to this server
+      connectSrc:  ["'self'", 'ws:', 'wss:'],
+      objectSrc:   ["'none'"],
+      baseUri:     ["'self'"],
+    },
+  },
+}));
 app.use(authMiddleware);
-app.use(express.json());
+app.use(express.json({ limit: '4kb' }));
 app.use(express.static(path.join(__dirname, 'web')));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -255,12 +407,15 @@ app.post('/api/logout', (req, res) => {
 
 // ── REST – session ────────────────────────────────────────────────────────────
 
-app.post('/api/session/create', (req, res) => {
+app.post('/api/session/create', createSessionLimiter, (req, res) => {
   let id;
   if (AUTH_HASH) {
     // Auth mode: one fixed session for the whole server, keyed to the token hash.
     id = AUTH_HASH;
     if (!getSession(id)) {
+      if (sessions.size >= MAX_SESSIONS) {
+        return res.status(503).json({ error: 'Server is at capacity — try again later' });
+      }
       sessions.set(id, {
         queue: [],
         nowPlaying: null,
@@ -277,13 +432,14 @@ app.post('/api/session/create', (req, res) => {
     }
   } else {
     id = createSession();
+    if (!id) return res.status(503).json({ error: 'Server is at capacity — try again later' });
   }
   res.json({ sessionId: id });
 });
 
 // ── REST – title lookup ───────────────────────────────────────────────────────
 
-app.get('/api/title', async (req, res) => {
+app.get('/api/title', titleLimiter, async (req, res) => {
   const rawUrl = req.query.url;
   const videoId = extractVideoId(rawUrl);
   if (!videoId) return res.json({ title: null });
@@ -326,16 +482,29 @@ app.get('/api/title', async (req, res) => {
 
 // ── REST – YouTube search (embeddable videos only) ────────────────────────────
 
-app.get('/api/search', async (req, res) => {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'YouTube API key not configured — add YOUTUBE_API_KEY to .env' });
+app.get('/api/search', searchLimiter, async (req, res) => {
+  if (!YT_KEYS.length) {
+    return res.status(503).json({ error: 'No YouTube API keys configured — add YOUTUBE_API_KEYS to .env' });
+  }
 
   const raw = req.query.q;
   if (!raw || typeof raw !== 'string') return res.json({ results: [] });
   const q = sanitiseTitle(raw).slice(0, 150);
   if (!q) return res.json({ results: [] });
 
-  logger.debug(`Search q="${q}"`);
+  // Serve from cache when available.
+  const cached = searchCache.get(q);
+  if (cached && Date.now() - cached.ts <= SEARCH_CACHE_TTL_MS) {
+    logger.debug(`Search cache hit  q="${q}"`);
+    return res.json({ results: cached.results });
+  }
+
+  const apiKey = getNextKey();
+  if (!apiKey) {
+    return res.status(503).json({ error: 'YouTube API quota exhausted — try again after midnight UTC' });
+  }
+
+  logger.debug(`Search q="${q}"  key=…${apiKey.slice(-4)}`);
   try {
     // Step 1: search
     const searchUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet' +
@@ -343,7 +512,10 @@ app.get('/api/search', async (req, res) => {
       '&q=' + encodeURIComponent(q) +
       '&key=' + encodeURIComponent(apiKey);
     const sr = await fetch(searchUrl, { signal: AbortSignal.timeout(8000) });
-    if (sr.status === 403) return res.status(429).json({ error: 'YouTube API quota exceeded or key invalid' });
+    if (sr.status === 403) {
+      retireKey(apiKey);
+      return res.status(503).json({ error: 'YouTube API quota exceeded — key rotated, try your search again' });
+    }
     if (!sr.ok) throw new Error(`Search HTTP ${sr.status}`);
     const sd = await sr.json();
 
@@ -373,6 +545,9 @@ app.get('/api/search', async (req, res) => {
         url:     'https://www.youtube.com/watch?v=' + i.id.videoId,
       }));
 
+    searchCache.set(q, { results, ts: Date.now() });
+    logger.debug(`Search complete  q="${q}"  results=${results.length}  cached=true`);
+
     res.json({ results });
   } catch (e) {
     logger.error('Search error:', e.message);
@@ -381,7 +556,11 @@ app.get('/api/search', async (req, res) => {
 });
 
 // QR code for any URL (used by the index page to generate the request-link QR).
-app.get('/api/qr', async (req, res) => {
+app.get('/api/qr', qrLimiter, async (req, res) => {
+  const sessionId = req.query.s;
+  if (!sessionId || !getSession(sessionId)) {
+    return res.status(403).json({ error: 'Invalid session' });
+  }
   const data = req.query.data;
   if (!data || typeof data !== 'string' || data.length > 2048) {
     return res.status(400).json({ error: 'Missing or invalid data param' });
@@ -528,6 +707,19 @@ wss.on('connection', (ws, req) => {
         break;
 
       case 'request': {
+        // Per-client flood guard: max 10 requests per minute per WebSocket connection.
+        const _now = Date.now();
+        if (!ws._reqWindowStart || _now - ws._reqWindowStart > WS_REQ_RATE_WINDOW_MS) {
+          ws._reqWindowStart = _now;
+          ws._reqCount = 0;
+        }
+        if (++ws._reqCount > WS_REQ_RATE_MAX) {
+          logger.warn(`WS request flood  session=${sid(sessionId)}`);
+          ws.close(4029, 'Rate limited');
+          return;
+        }
+        // Per-session inbox cap: silently ignore once the inbox is full.
+        if (session.requests.length >= MAX_SESSION_REQUESTS) return;
         const title  = sanitiseTitle(msg.title  || '').slice(0, 120);
         if (!title) return;
         const name   = sanitiseTitle(msg.name   || '').slice(0, 120);
@@ -549,12 +741,84 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ── Session persistence ───────────────────────────────────────────────────────────
+// Queue, now-playing, and requests survive a server restart.
+// The clients Set (live WebSocket objects) is not serialisable and is omitted.
+
+const SESSION_FILE = path.join(__dirname, 'data', 'sessions.json');
+
+async function saveSessionsToDisk() {
+  const payload = [];
+  for (const [id, s] of sessions) {
+    payload.push({
+      id,
+      queue:         s.queue,
+      nowPlaying:    s.nowPlaying,
+      paused:        s.paused,
+      nextId:        s.nextId,
+      requests:      s.requests,
+      nextRequestId: s.nextRequestId,
+      lastActivity:  s.lastActivity,
+    });
+  }
+  try {
+    await fs.promises.mkdir(path.dirname(SESSION_FILE), { recursive: true });
+    const tmp = SESSION_FILE + '.tmp';
+    await fs.promises.writeFile(tmp, JSON.stringify(payload));
+    await fs.promises.rename(tmp, SESSION_FILE); // atomic on most OSes
+    logger.debug(`Sessions saved: ${payload.length}`);
+  } catch (e) {
+    logger.error('Failed to save sessions:', e.message);
+  }
+}
+
+async function loadSessionsFromDisk() {
+  try {
+    const raw  = await fs.promises.readFile(SESSION_FILE, 'utf8');
+    const list = JSON.parse(raw);
+    const now  = Date.now();
+    let loaded = 0;
+    for (const s of (Array.isArray(list) ? list : [])) {
+      if (!s.id || now - s.lastActivity > SESSION_TTL_MS) continue;
+      sessions.set(s.id, {
+        queue:         Array.isArray(s.queue)    ? s.queue    : [],
+        nowPlaying:    s.nowPlaying              || null,
+        paused:        !!s.paused,
+        nextId:        s.nextId                  || 1,
+        requests:      Array.isArray(s.requests) ? s.requests : [],
+        nextRequestId: s.nextRequestId           || 1,
+        clients:       new Set(),
+        lastActivity:  s.lastActivity,
+      });
+      loaded++;
+    }
+    if (loaded > 0) logger.info(`Sessions loaded from disk: ${loaded}`);
+  } catch (e) {
+    if (e.code !== 'ENOENT') logger.warn('Could not load sessions from disk:', e.message);
+    // ENOENT on first run is expected — no sessions to restore.
+  }
+}
+
+// Auto-save every 60 seconds.
+setInterval(saveSessionsToDisk, 60_000).unref();
+
+// Save on graceful shutdown so in-flight sessions aren't lost.
+function shutdown(signal) {
+  logger.info(`${signal} received — saving sessions and exiting…`);
+  saveSessionsToDisk().finally(() => process.exit(0));
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+
+// ── Start ─────────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3444;
-server.listen(PORT, () => {
-  logger.info(`Karaoke Browser listening on port ${PORT}`);
-  logger.info(`  Open: http://localhost:${PORT}/`);
-  logger.info(`  Auth: ${AUTH_HASH ? 'enabled' : 'disabled'}`);
-  logger.info(`  Log level: ${process.env.LOG_LEVEL || 'info'}`);
+loadSessionsFromDisk().then(() => {
+  server.listen(PORT, () => {
+    logger.info(`Karaoke Browser listening on port ${PORT}`);
+    logger.info(`  Open: http://localhost:${PORT}/`);
+    logger.info(`  Auth: ${AUTH_HASH ? 'enabled' : 'disabled'}`);
+    logger.info(`  Keys: ${YT_KEYS.length} YouTube API key(s) configured`);
+    logger.info(`  Log level: ${process.env.LOG_LEVEL || 'info'}`);
+  });
 });

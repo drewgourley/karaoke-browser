@@ -97,7 +97,7 @@ function showRoomLinks() {
   requestUrlInput.value = requestUrl;
   requestLinkRow.classList.remove('hidden');
   // Fetch and display the QR code.
-  fetch('/api/qr?data=' + encodeURIComponent(requestUrl))
+  fetch('/api/qr?s=' + encodeURIComponent(currentSessionId) + '&data=' + encodeURIComponent(requestUrl))
     .then(r => r.json())
     .then(({ dataUrl }) => {
       if (dataUrl) {

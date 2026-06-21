@@ -9,6 +9,9 @@ ecosystem.config.js
 *.log
 npm-debug.log*
 
+# session persistence
+data/
+
 # OS
 .DS_Store
 Thumbs.db
