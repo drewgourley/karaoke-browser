@@ -37,7 +37,10 @@
 
     <!-- Now Playing -->
     <div class="card">
-      <div class="card-label">Now Playing</div>
+      <div class="queue-header">
+        <div class="card-label" style="margin-bottom:0">Now Playing</div>
+        <button class="ghost" id="requeue-btn" title="Requeue: put current track back at the top of the queue and play next" style="font-size:0.75rem" hidden>&#x21A9; Requeue</button>
+      </div>
       <div id="now-playing"><span class="np-idle">Nothing playing</span></div>
     </div>
 
@@ -195,9 +198,9 @@
       </div>
     </div>
 
-    <div class="dm-section">
+    <div class="dm-section" id="dm-blocked-section">
       <div class="dm-row">
-        <div class="dm-label">Waiting (crowd mode)</div>
+        <div class="dm-label">Waiting</div>
         <span class="dm-count" id="dm-blocked-count">0</span>
         <button class="ghost dm-btn" id="dm-unblock-btn">&#x21BA; Unblock all</button>
       </div>

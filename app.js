@@ -1063,6 +1063,20 @@ wss.on('connection', async (ws, req) => {
         await playNext(sessionId, session);
         break;
 
+      case 'requeue': {
+        // Controller only. Moves nowPlaying back to position 0 of the queue
+        // and advances to the next queued track, so the current song comes
+        // back around immediately after rather than being discarded.
+        if (!session.nowPlaying || !session.queue.length) break;
+        const requeued = session.nowPlaying;
+        session.paused     = false;
+        session.nowPlaying = session.queue.shift();
+        session.queue.unshift(requeued);
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
       case 'remove': {
         const idx = Number(msg.index);
         if (Number.isInteger(idx) && idx >= 0 && idx < session.queue.length) {

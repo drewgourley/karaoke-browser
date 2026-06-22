@@ -22,6 +22,7 @@ const titleInput    = document.getElementById('title-input');
 const addBtn        = document.getElementById('add-btn');
 const fetchBtn      = document.getElementById('fetch-btn');
 const npEl          = document.getElementById('now-playing');
+const requeueBtn    = document.getElementById('requeue-btn');
 const queueEl       = document.getElementById('queue-list');
 const qCount        = document.getElementById('q-count');
 const clearBtn      = document.getElementById('clear-btn');
@@ -110,6 +111,8 @@ function renderDevicesModal() {
   if (dmBlockedCount)   dmBlockedCount.textContent   = state.blockedCount   || 0;
   if (dmUnbanBtn)    dmUnbanBtn.disabled    = !(state.bannedCount  > 0);
   if (dmUnblockBtn)  dmUnblockBtn.disabled  = !(state.blockedCount > 0);
+  const dmBlockedSection = document.getElementById('dm-blocked-section');
+  if (dmBlockedSection) dmBlockedSection.hidden = state.requestMode !== 'crowd';
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
@@ -132,26 +135,31 @@ function render() {
 
 function renderNP() {
   const np = state.nowPlaying;
+  requeueBtn.hidden   = !(np && !np.embedFailed && state.queue.length > 0);
+  requeueBtn.disabled = !state.playerConnected;
   if (!np) {
     npEl.innerHTML = '<span class="np-idle">Nothing playing</span>';
     return;
   }
 
   if (np.embedFailed) {
+    const dis = state.playerConnected ? '' : ' disabled';
     npEl.innerHTML =
       '<div class="embed-warn">' +
         '<div class="embed-warn-title">⚠️ ' + esc(np.title) + '</div>' +
         '<div class="embed-warn-msg">This video can\'t be embedded — it\'s playing on YouTube in the player window. Skip when the song is done.</div>' +
         '<div class="row" style="margin-top:0.25rem">' +
           '<a class="btn" href="' + esc(np.url) + '" target="_blank" rel="noopener noreferrer">Open in YouTube</a>' +
-          '<button class="secondary" id="skip-btn">⏭ Skip</button>' +
+          '<button class="secondary" id="skip-btn"' + dis + '>⏭ Skip</button>' +
         '</div>' +
       '</div>';
     document.getElementById('skip-btn').addEventListener('click', () => send({ type: 'next' }));
     return;
   }
 
-  const isPaused = !!state.paused;
+  const isPaused   = !!state.paused;
+  const playerOn   = !!state.playerConnected;
+  const dis        = playerOn ? '' : ' disabled';
   npEl.innerHTML =
     '<div class="np-wrap">' +
       '<img class="np-thumb" src="' + thumb(np.videoId) + '" alt="">' +
@@ -159,9 +167,9 @@ function renderNP() {
         '<div class="np-title" title="' + esc(np.title) + '">' + esc(np.title) + '</div>' +
         (np.singer ? '<div class="np-singer">🎤 ' + esc(np.singer) + '</div>' : '') +
         '<div class="row">' +
-          '<button class="secondary icon" id="restart-btn">↺ Restart</button>' +
-          '<button class="secondary icon" id="playpause-btn">' + (isPaused ? '▶ Begin' : '⏸ Pause') + '</button>' +
-          '<button class="secondary icon" id="skip-btn">⏭ Skip</button>' +
+          '<button class="secondary icon" id="restart-btn"' + dis + '>↺ Restart</button>' +
+          '<button class="secondary icon" id="playpause-btn"' + dis + '>' + (!playerOn || isPaused ? '▶ Begin' : '⏸ Pause') + '</button>' +
+          '<button class="secondary icon" id="skip-btn"' + dis + '>⏭ Skip</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -728,6 +736,8 @@ function renderMixer() {
       singerHtml = '🎵 Standby Music';
     }
     const standbyPaused = !!state.standbyPaused;
+    const mxPlayerOn    = !!state.playerConnected;
+    const mxDis         = mxPlayerOn ? '' : ' disabled';
     mxStandbyNPEl.innerHTML =
       '<div class="np-wrap">' +
         thumbHtml +
@@ -735,8 +745,8 @@ function renderMixer() {
           '<div class="np-title" title="' + esc(cardTitle) + '">' + esc(cardTitle) + '</div>' +
           '<div class="np-singer">' + singerHtml + '</div>' +
           '<div class="row">' +
-            '<button class="secondary icon" id="standby-playpause-btn">' + (standbyPaused ? '▶ Play' : '⏸ Pause') + '</button>' +
-            '<button class="secondary icon" id="standby-skip-btn">⏭ Skip</button>' +
+            '<button class="secondary icon" id="standby-playpause-btn"' + mxDis + '>' + (!mxPlayerOn || standbyPaused ? '▶ Play' : '⏸ Pause') + '</button>' +
+            '<button class="secondary icon" id="standby-skip-btn"' + mxDis + '>⏭ Skip</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -897,4 +907,5 @@ devicesModal.addEventListener('click', e => { if (e.target === devicesModal) dev
 dmResetBtn.addEventListener('click',  () => send({ type: 'reset-requester-presence' }));
 dmUnbanBtn.addEventListener('click',  () => send({ type: 'unban-all-devices' }));
 dmUnblockBtn.addEventListener('click', () => send({ type: 'clear-blocked-devices' }));
+requeueBtn.addEventListener('click', () => send({ type: 'requeue' }));
 connect();
