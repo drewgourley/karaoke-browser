@@ -393,6 +393,16 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'standby-pause') {
+      if (standbyPlayer && typeof standbyPlayer.pauseVideo === 'function') standbyPlayer.pauseVideo();
+      return;
+    }
+
+    if (msg.type === 'standby-resume') {
+      if (standbyPlayer && typeof standbyPlayer.playVideo === 'function') standbyPlayer.playVideo();
+      return;
+    }
+
     if (msg.type === 'state') {
       updateGateStatus(!!msg.controllerConnected);
 

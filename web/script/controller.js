@@ -529,8 +529,9 @@ const mxMicMuteBtn       = document.getElementById('mic-mute-btn');
 const mxMicDot           = document.getElementById('mic-status-dot');
 const mxMicHint          = document.getElementById('mic-hint');
 const mxStandbyNPEl     = document.getElementById('standby-now-playing');
-const mxStandbyDot      = document.getElementById('standby-dot');
-const mxStandbyName     = document.getElementById('standby-name');
+const mxTrackCard       = document.getElementById('standby-track-card');
+const mxTrackListEl     = document.getElementById('standby-track-list');
+const mxTrackCount      = document.getElementById('standby-track-count');
 const mxClearStandbyBtn = document.getElementById('clear-standby-btn');
 const mxTabSearch       = document.getElementById('mx-tab-search');
 const mxTabUrl          = document.getElementById('mx-tab-url');
@@ -545,6 +546,7 @@ const mxSearchResults   = document.getElementById('mx-search-results');
 
 const MX_HANDLE_H  = 40;
 let micReady = null; // null=unknown, true=ready, false=denied/unavailable
+let mxLoadedPlaylistId = null; // playlist whose tracks are currently rendered
 const MX_DEFAULT_H = 320;
 let mxOpenHeight   = parseInt(localStorage.getItem('kk_mixer_h') || '0') || MX_DEFAULT_H;
 let mxOpen         = localStorage.getItem('kk_mixer_open') === 'true';
@@ -686,14 +688,8 @@ function renderMixer() {
     : micReady === false ? 'Permission denied or unavailable'
     : muted ? 'Muted' : 'Active';
 
-  // Standby playlist status row (col 2)
   const active = !!state.standbyPlaylistId;
-  mxStandbyDot.className = 'status-dot-sm' + (active ? ' on' : '');
-  mxStandbyName.textContent = active
-    ? (state.standbyPlaylistTitle || state.standbyPlaylistId)
-    : 'No playlist set';
-  mxStandbyName.className = active ? 'active' : '';
-  mxClearStandbyBtn.hidden = !active;
+  mxLoadTracks(state.standbyPlaylistId || null);
 
   // Standby now-playing card (col 1)
   if (!active) {
@@ -714,15 +710,25 @@ function renderMixer() {
       cardTitle  = playlistLabel;
       singerHtml = '🎵 Standby Music';
     }
+    const standbyPaused = !!state.standbyPaused;
     mxStandbyNPEl.innerHTML =
       '<div class="np-wrap">' +
         thumbHtml +
         '<div class="np-info">' +
           '<div class="np-title" title="' + esc(cardTitle) + '">' + esc(cardTitle) + '</div>' +
           '<div class="np-singer">' + singerHtml + '</div>' +
-          '<button class="ghost standby-skip-btn" title="Skip to next track">⏭ Skip</button>' +
+          '<div class="row">' +
+            '<button class="secondary icon" id="standby-playpause-btn">' + (standbyPaused ? '▶ Play' : '⏸ Pause') + '</button>' +
+            '<button class="secondary icon" id="standby-skip-btn">⏭ Skip</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
+    document.getElementById('standby-playpause-btn')?.addEventListener('click', () => {
+      send({ type: standbyPaused ? 'standby-resume' : 'standby-pause' });
+    });
+    document.getElementById('standby-skip-btn')?.addEventListener('click', () => {
+      send({ type: 'standby-skip' });
+    });
   }
 }
 
@@ -745,6 +751,7 @@ mxMicMuteBtn.addEventListener('change', () => send({ type: 'mic-mute', muted: !m
 mxSetBtn.addEventListener('click', () => {
   const url = mxUrlInput.value.trim();
   if (!url) { mxUrlInput.focus(); return; }
+  if (state.standbyPlaylistId) send({ type: 'clear-standby' });
   send({ type: 'set-standby-playlist', url });
   mxUrlInput.value = '';
 });
@@ -752,12 +759,59 @@ mxUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') mxSetBtn.cl
 
 // ── Mixer clear standby ───────────────────────────────────────────────────
 mxClearStandbyBtn.addEventListener('click', () => send({ type: 'clear-standby' }));
+// ── Mixer playlist track list ────────────────────────────────────────────
+function mxHighlightCurrentTrack() {
+  const currentVid = state.standbyTrack?.videoId;
+  mxTrackListEl.querySelectorAll('.qi[data-vid]').forEach(li => {
+    li.classList.toggle('qi-current', li.dataset.vid === currentVid);
+  });
+}
 
-// ── Mixer standby skip ───────────────────────────────────────────────────
-mxStandbyNPEl.addEventListener('click', e => {
-  if (e.target.closest('.standby-skip-btn')) send({ type: 'standby-skip' });
-});
-
+async function mxLoadTracks(playlistId) {
+  if (!playlistId) {
+    mxTrackCard.hidden = true;
+    mxLoadedPlaylistId = null;
+    mxTrackCount.textContent = '0';
+    return;
+  }
+  if (playlistId === mxLoadedPlaylistId) {
+    mxHighlightCurrentTrack();
+    return;
+  }
+  mxTrackCard.hidden = false;
+  mxTrackListEl.innerHTML = '<li class="empty">Loading…</li>';
+  try {
+    const r = await fetch(
+      '/api/mixer/playlist-items?id=' + encodeURIComponent(playlistId) +
+      '&s=' + encodeURIComponent(sessionId)
+    );
+    const data = await r.json();
+    if (data.error === 'not_configured') {
+      mxTrackListEl.innerHTML = '<li class="empty">Requires a YouTube API key</li>';
+      return;
+    }
+    if (data.error || !data.items) {
+      mxTrackListEl.innerHTML = '<li class="empty">Could not load tracks</li>';
+      return;
+    }
+    mxLoadedPlaylistId = playlistId;
+    mxTrackCount.textContent = String(data.items.length);
+    mxTrackListEl.innerHTML = data.items.length === 0
+      ? '<li class="empty">No tracks found</li>'
+      : data.items.map((item, i) =>
+          '<li class="qi" data-vid="' + esc(item.videoId) + '">' +
+            '<span class="qi-num">' + (i + 1) + '</span>' +
+            '<img class="qi-thumb" src="' + esc(item.thumbnail || thumb(item.videoId)) + '" alt="" loading="lazy">' +
+            '<div class="qi-info">' +
+              '<span class="qi-title" title="' + esc(item.title) + '">' + esc(item.title) + '</span>' +
+            '</div>' +
+          '</li>'
+        ).join('');
+    mxHighlightCurrentTrack();
+  } catch {
+    mxTrackListEl.innerHTML = '<li class="empty">Failed to load tracks</li>';
+  }
+}
 // ── Mixer playlist search ─────────────────────────────────────────────────
 async function mxDoSearch() {
   const q = mxSearchInput.value.trim();
@@ -811,6 +865,7 @@ mxSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') mxDoSear
 mxSearchResults.addEventListener('click', e => {
   const btn = e.target.closest('.btn-use');
   if (!btn) return;
+  if (state.standbyPlaylistId) send({ type: 'clear-standby' });
   send({ type: 'set-standby-playlist', url: 'https://www.youtube.com/playlist?list=' + btn.dataset.id, title: btn.dataset.title, thumbnail: btn.dataset.thumb || undefined });
   btn.textContent = '✓ Set';
   btn.disabled = true;

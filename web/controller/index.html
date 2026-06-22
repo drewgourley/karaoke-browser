@@ -186,6 +186,15 @@
         <div class="card-label">Standby Music</div>
         <div id="standby-now-playing"><span class="np-idle">No playlist set</span></div>
       </div>
+      <div class="card" id="standby-track-card" hidden>
+        <div class="queue-header">
+          <div class="card-label" style="margin-bottom:0">
+            Playlist Tracks <span class="badge" id="standby-track-count">0</span>
+          </div>
+          <button class="ghost" id="clear-standby-btn" title="Clear standby playlist" style="font-size:0.75rem">Clear</button>
+        </div>
+        <ul class="queue" id="standby-track-list"></ul>
+      </div>
     </div>
 
     <!-- Col 2: Standby playlist -->
@@ -197,12 +206,6 @@
             <button class="tab-btn active" id="mx-tab-search">&#x1F50D; Search</button>
             <button class="tab-btn" id="mx-tab-url">&#x1F517; Paste URL</button>
           </div>
-        </div>
-        <!-- Active playlist status (always visible) -->
-        <div class="mixer-status-row">
-          <span class="status-dot-sm" id="standby-dot"></span>
-          <span id="standby-name">No playlist set</span>
-          <button class="ghost" id="clear-standby-btn" hidden>Clear</button>
         </div>
         <!-- Search panel -->
         <div id="mx-panel-search">

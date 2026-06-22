@@ -223,6 +223,7 @@ const K = {
   sessions:       ()  => 'kk:sessions',
   search:         q   => `kk:search:${q}`,
   playlistSearch: q   => `kk:plsearch:${q}`,
+  playlistItems:  id  => `kk:plitems:${id}`,
   channel:        id => `kk:state:${id}`,
 };
 
@@ -249,6 +250,7 @@ function newSessionData() {
     fadeDuration:         1500,      // ms: crossfade speed (500–5000)
     micVolume:            80,        // 0–100: microphone gain
     micMuted:             false,     // microphone muted
+    standbyPaused:        false,     // standby music paused
     lastActivity:         Date.now(),
   };
 }
@@ -437,6 +439,7 @@ async function broadcastState(sessionId) {
     fadeDuration:          session.fadeDuration   ?? 1500,
     micVolume:             session.micVolume      ?? 80,
     micMuted:              !!session.micMuted,
+    standbyPaused:         session.standbyPaused  ?? false,
   });
 }
 
@@ -786,6 +789,49 @@ app.get('/api/mixer/search', searchLimiter, async (req, res) => {
     res.status(500).json({ error: 'search_failed' });
   }
 });
+
+app.get('/api/mixer/playlist-items', searchLimiter, async (req, res) => {
+  if (!YT_KEYS.length) return res.status(503).json({ error: 'not_configured' });
+  const sessionId = req.query.s;
+  if (!sessionId || !(await getSession(sessionId))) {
+    return res.status(403).json({ error: 'Invalid session' });
+  }
+  const playlistId = req.query.id;
+  if (!playlistId || typeof playlistId !== 'string' || !/^[A-Za-z0-9_-]{10,60}$/.test(playlistId)) {
+    return res.status(400).json({ error: 'invalid_id' });
+  }
+
+  const cacheKey = K.playlistItems(playlistId);
+  const cached = await redis.get(cacheKey);
+  if (cached) return res.json({ items: JSON.parse(cached) });
+
+  const apiKey = getNextKey();
+  if (!apiKey) return res.status(503).json({ error: 'quota_exhausted' });
+
+  try {
+    const url = 'https://www.googleapis.com/youtube/v3/playlistItems' +
+      '?part=snippet&maxResults=50' +
+      '&playlistId=' + encodeURIComponent(playlistId) +
+      '&key=' + encodeURIComponent(apiKey);
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (r.status === 403) { retireKey(apiKey); return res.status(503).json({ error: 'quota_exhausted' }); }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const items = (data.items || [])
+      .filter(i => i.snippet?.resourceId?.kind === 'youtube#video')
+      .map(i => ({
+        videoId:   i.snippet.resourceId.videoId,
+        title:     sanitiseTitle(decodeEntities(i.snippet.title)).slice(0, 120),
+        thumbnail: i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url || '',
+      }));
+    await redis.set(cacheKey, JSON.stringify(items), 'EX', SEARCH_CACHE_TTL_SECS);
+    res.json({ items });
+  } catch (e) {
+    logger.error('Playlist items error:', e.message);
+    res.status(500).json({ error: 'fetch_failed' });
+  }
+});
+
 app.get('/api/qr', qrLimiter, async (req, res) => {
   const sessionId = req.query.s;
   if (!sessionId || !(await getSession(sessionId))) {
@@ -1178,6 +1224,26 @@ wss.on('connection', async (ws, req) => {
         if (role !== 'controller' && role !== 'mixer') break;
         if (!session.standbyPlaylistId) break;
         await publishRaw(sessionId, { type: 'standby-skip' });
+        break;
+      }
+
+      case 'standby-pause': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        if (!session.standbyPlaylistId) break;
+        session.standbyPaused = true;
+        await saveSession(sessionId, session);
+        await publishRaw(sessionId, { type: 'standby-pause' });
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'standby-resume': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        if (!session.standbyPlaylistId) break;
+        session.standbyPaused = false;
+        await saveSession(sessionId, session);
+        await publishRaw(sessionId, { type: 'standby-resume' });
+        await broadcastState(sessionId);
         break;
       }
 
