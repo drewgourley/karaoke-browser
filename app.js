@@ -1279,7 +1279,8 @@ wss.on('connection', async (ws, req) => {
           : null;
         if (!trackVideoId || !session.standbyPlaylistId) break;
         const trackTitle = typeof msg.title === 'string' ? msg.title.slice(0, 200) : null;
-        session.standbyTrack = { videoId: trackVideoId, title: trackTitle };
+        session.standbyTrack  = { videoId: trackVideoId, title: trackTitle };
+        session.standbyPaused = false; // player is reporting playback — ensure paused flag is in sync
         await saveSession(sessionId, session);
         await broadcastState(sessionId);
         break;
