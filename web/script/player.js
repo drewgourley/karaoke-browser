@@ -285,6 +285,15 @@ function showIdle() {
   shouldPauseOnPlay = false;
   showingSlate = false;
   hideSlate(null);
+  // If the controller was lost during a track, surface the gate now that
+  // we're between songs and it's safe to show it.
+  if (userActivated && !controllerReady) {
+    const gate = document.getElementById('start-gate');
+    if (gate && gate.style.display === 'none') {
+      gate.style.display = 'flex';
+      gate.classList.remove('fading');
+    }
+  }
   if (userActivated) {
     if (pendingPlaylistId) {
       const pid = pendingPlaylistId;
@@ -360,10 +369,12 @@ function updateGateStatus(controllerConnected) {
 
   if (userActivated) {
     if (!controllerConnected && gate.style.display === 'none') {
-      // Controller dropped after gate was dismissed — bring it back so the
-      // DJ can see the status and tap Open Controller to recover.
-      gate.style.display = 'flex';
-      gate.classList.remove('fading');
+      // Controller dropped after gate was dismissed. Only bring it back if
+      // we're between tracks — don't interrupt a live karaoke song.
+      if (!currentVideoId) {
+        gate.style.display = 'flex';
+        gate.classList.remove('fading');
+      }
     } else if (controllerConnected && gate.style.display !== 'none') {
       // Controller reconnected — auto-dismiss the gate.
       gate.classList.add('fading');
