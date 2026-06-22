@@ -106,13 +106,18 @@ function send(obj) {
 
 // ── Devices modal ──────────────────────────────────────────────────────────
 function renderDevicesModal() {
+  const isCrowd = state.requestMode === 'crowd';
+  const dmRequesterLabel = document.getElementById('dm-requester-label');
+  const dmBannedSection  = document.getElementById('dm-banned-section');
+  const dmBlockedSection = document.getElementById('dm-blocked-section');
+  if (dmRequesterLabel) dmRequesterLabel.textContent = isCrowd ? 'Requestors' : 'Kiosks';
+  if (dmBannedSection)  dmBannedSection.hidden  = !isCrowd;
+  if (dmBlockedSection) dmBlockedSection.hidden = !isCrowd;
   if (dmRequesterCount) dmRequesterCount.textContent = state.requesterCount || 0;
   if (dmBannedCount)    dmBannedCount.textContent    = state.bannedCount    || 0;
   if (dmBlockedCount)   dmBlockedCount.textContent   = state.blockedCount   || 0;
   if (dmUnbanBtn)    dmUnbanBtn.disabled    = !(state.bannedCount  > 0);
   if (dmUnblockBtn)  dmUnblockBtn.disabled  = !(state.blockedCount > 0);
-  const dmBlockedSection = document.getElementById('dm-blocked-section');
-  if (dmBlockedSection) dmBlockedSection.hidden = state.requestMode !== 'crowd';
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
