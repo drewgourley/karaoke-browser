@@ -11,6 +11,7 @@ const roomLinks     = document.getElementById('room-links');
 const controllerBtn = document.getElementById('controller-btn');
 const playerBtn     = document.getElementById('player-btn');
 const logoutBtn     = document.getElementById('logout-btn');
+const newRoomBtn    = document.getElementById('new-room-btn');
 const requestLinkRow  = document.getElementById('request-link-row');
 const requestUrlInput = document.getElementById('request-url');
 const copyRequestBtn  = document.getElementById('copy-request-btn');
@@ -117,6 +118,7 @@ function showCreate() {
   loginSection.classList.add('hidden');
   createSection.classList.remove('hidden');
   roomLinks.classList.add('hidden');
+  newRoomBtn.classList.add('hidden');
   createBtn.disabled = false;
   createBtn.textContent = 'Start Karaoke Night';
 }
@@ -156,6 +158,7 @@ function showRoomLinks() {
   saveSessionToStorage();
   // In auth mode there's only one room — offer logout, not a new room.
   logoutBtn.classList.toggle('hidden', !authMode);
+  newRoomBtn.classList.toggle('hidden', authMode);
   // Populate and reveal the request share link.
   const requestUrl = location.origin + '/request/?s=' + encodeURIComponent(currentSessionId);
   requestUrlInput.value = requestUrl;
@@ -243,6 +246,12 @@ logoutBtn.addEventListener('click', () => {
       currentSessionId = null;
       showLogin();
     });
+});
+
+newRoomBtn.addEventListener('click', () => {
+  clearSessionFromStorage();
+  currentSessionId = null;
+  showCreate();
 });
 
 // ── Copy request link ────────────────────────────────────────────────

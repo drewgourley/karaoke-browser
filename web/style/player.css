@@ -17,6 +17,17 @@ html, body {
   pointer-events: none;
 }
 
+/* Standby music player — audio only, invisible */
+#standby-player {
+  position: fixed;
+  left: -1px;
+  top: -1px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 /* In fullscreen the embed fills the whole screen — no fixed size, no border */
 :fullscreen #yt-player,
 :-webkit-full-screen #yt-player {
@@ -114,6 +125,45 @@ html, body {
   transition: opacity 0.55s ease;
 }
 #singer-slate.visible { opacity: 1; }
+
+/* ── Crowd mode: two-column slate layout ──────────────────────────────────── */
+.slate-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+#idle.crowd,
+#singer-slate.crowd {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: 0;
+}
+.slate-crowd-qr { display: none; }
+#idle.crowd .slate-crowd-qr,
+#singer-slate.crowd .slate-crowd-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 2.5rem 2rem;
+  border-left: 1px solid rgba(255,255,255,0.07);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+}
+.scq-logo    { font-size: clamp(2.5rem,6vw,4rem); line-height: 1; filter: drop-shadow(0 0 16px rgba(76,201,240,0.45)); }
+.scq-heading { font-size: clamp(1.5rem,4vw,3rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; text-align: center; }
+.scq-sub     { font-size: clamp(0.85rem,2vw,1.1rem); color: #64748b; text-align: center; line-height: 1.55; }
+.scq-card    { background: #fff; border-radius: 20px; padding: 14px; animation: scq-glow 3s ease-in-out infinite; }
+.scq-img     { display: block; width: min(240px,30vw); height: min(240px,30vw); image-rendering: pixelated; }
+.scq-url     { display: none; font-size: clamp(0.6rem,1.2vw,0.8rem); color: #64748b; font-family: 'Courier New', monospace; word-break: break-all; text-align: center; max-width: min(240px,30vw); }
+@keyframes scq-glow {
+  0%, 100% { box-shadow: 0 0 40px rgba(76,201,240,0.20); }
+  50%       { box-shadow: 0 0 80px rgba(76,201,240,0.50); }
+}
 
 /* Start gate — requires one user tap to unlock autoplay */
 #start-gate {

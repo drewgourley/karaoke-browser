@@ -20,6 +20,48 @@ let showingSlate = false;
 let userActivated = false;
 let controllerReady = false;
 let hideSlateTimer = null;
+let requestMode   = null;
+let slateQrLoaded = false;
+
+// ── Standby music player ───────────────────────────────────────────────────
+let standbyPlayer     = null;
+let pendingPlaylistId = null;
+let currentPlaylistId = null;
+let standbyFadeTimer  = null;
+let standbyTargetVol  = 75;   // updated from state
+let videoTargetVol    = 100;  // updated from state
+let fadeDurationMs    = 1500; // updated from state
+
+// ── Microphone ─────────────────────────────────────────────────────────────
+let micContext    = null; // AudioContext
+let micGain       = null; // GainNode
+let micStream     = null; // MediaStream
+let micTargetVol  = 80;   // 0-100, updated from state
+let micMuted      = false; // updated from state
+
+function applyMicGain() {
+  if (micGain) micGain.gain.value = micMuted ? 0 : micTargetVol / 100;
+}
+
+async function initMic() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+    });
+    const source = micContext.createMediaStreamSource(stream);
+    micGain = micContext.createGain();
+    applyMicGain();
+    source.connect(micGain);
+    micGain.connect(micContext.destination);
+    micStream = stream;
+    if (ws && ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: 'mic-status', ready: true }));
+  } catch (err) {
+    console.warn('[Mic] getUserMedia failed:', err.name);
+    if (ws && ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: 'mic-status', ready: false, reason: err.name }));
+  }
+}
 
 // ── Start gate — one tap unlocks autoplay for the session ──────────────────
 document.getElementById('start-gate').addEventListener('click', () => {
@@ -31,6 +73,19 @@ document.getElementById('start-gate').addEventListener('click', () => {
       const vid = pendingVideoId;
       pendingVideoId = null;
       loadVideo(vid);
+    }
+    // Unlock standby: if player wasn't ready yet start it now, otherwise just unmute.
+    if (pendingPlaylistId) {
+      const pid = pendingPlaylistId;
+      pendingPlaylistId = null;
+      loadStandbyPlaylist(pid);
+    } else if (currentPlaylistId) {
+      fadeStandbyVolume(standbyTargetVol);
+    }
+    // Initialise microphone in user-gesture context so AudioContext can start.
+    if (!micContext && (window.AudioContext || window.webkitAudioContext)) {
+      micContext = new (window.AudioContext || window.webkitAudioContext)();
+      initMic();
     }
   }
   // Dismiss the gate whether this is the first tap or a recovery tap.
@@ -44,26 +99,24 @@ window.onYouTubeIframeAPIReady = function () {
     height: '100%',
     playerVars: {
       autoplay: 1,
-      controls: 0,       // no control bar
-      rel: 0,            // no related videos
-      modestbranding: 1, // minimal branding
-      iv_load_policy: 3, // no annotations
-      showinfo: 0,       // no title overlay (legacy, still effective)
-      cc_load_policy: 0, // no auto-generated captions
-      fs: 0,             // no fullscreen button
-      disablekb: 1,      // no keyboard shortcuts
+      controls: 0,
+      rel: 0,
+      modestbranding: 1,
+      iv_load_policy: 3,
+      showinfo: 0,
+      cc_load_policy: 0,
+      fs: 0,
+      disablekb: 1,
       playsinline: 1,
     },
     events: {
       onReady: function () {
         if (pendingVideoId) {
           if (userActivated) {
-            // Gate was tapped before the API was ready — load now.
             const vid = pendingVideoId;
             pendingVideoId = null;
             loadVideo(vid);
           }
-          // If !userActivated, leave pendingVideoId intact so the gate handler can pick it up.
         }
       },
       onStateChange: function (e) {
@@ -83,11 +136,52 @@ window.onYouTubeIframeAPIReady = function () {
       },
       onError: function (e) {
         console.warn('[YT] onError code:', e.data);
-        // 100 = removed/private; 101/150 = embedding disabled by owner/environment
         if (e.data === 100 || e.data === 101 || e.data === 150) {
           showEmbedError(currentVideoId);
           ws.send(JSON.stringify({ type: 'video-error', code: e.data }));
         }
+      },
+    },
+  });
+
+  // Create the standby music player (audio-only, hidden off-screen).
+  standbyPlayer = new YT.Player('standby-player', {
+    width: '1',
+    height: '1',
+    playerVars: {
+      autoplay: 1,  // must be 1 so the iframe gets allow="autoplay"; we silence it immediately in onReady
+      controls: 0,
+      loop: 1,
+      fs: 0,
+      disablekb: 1,
+      playsinline: 1,
+      rel: 0,
+    },
+    events: {
+      onReady: function () {
+        standbyPlayer.setVolume(0); // silence any initial autoplay attempt
+        if (pendingPlaylistId) {
+          const pid = pendingPlaylistId;
+          pendingPlaylistId = null;
+          loadStandbyPlaylist(pid); // loads silently; fades up when user activates
+        }
+      },
+      onStateChange: function (e) {
+        // PLAYING — report the current track to the controller mixer card.
+        if (e.data === 1) {
+          const data = standbyPlayer.getVideoData && standbyPlayer.getVideoData();
+          if (data && data.video_id && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'standby-track', videoId: data.video_id, title: data.title || '' }));
+          }
+        }
+        // ENDED — restart the playlist to guarantee continuous looping.
+        if (e.data === 0 && currentPlaylistId) {
+          standbyPlayer.loadPlaylist({ listType: 'playlist', list: currentPlaylistId, index: 0 });
+          standbyPlayer.playVideo();
+        }
+      },
+      onError: function (e) {
+        console.warn('[Standby] onError code:', e.data, '— skipping');
       },
     },
   });
@@ -108,6 +202,7 @@ function loadVideo(videoId) {
   currentVideoId = videoId;
   document.getElementById('embed-error').style.display = 'none';
   if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+    ytPlayer.setVolume(videoTargetVol);
     ytPlayer.loadVideoById(videoId);
   } else {
     pendingVideoId = videoId;
@@ -115,20 +210,21 @@ function loadVideo(videoId) {
 }
 
 function showSlate() {
-  // Cancel any pending hideSlate timer so it can't clobber this slate.
   if (hideSlateTimer) { clearTimeout(hideSlateTimer); hideSlateTimer = null; }
   showingSlate = true;
+  fadeStandbyVolume(standbyTargetVol);
   const slate = document.getElementById('singer-slate');
   document.getElementById('slate-eyebrow').textContent = currentSinger ? 'Now Singing' : 'Up Next';
   document.getElementById('slate-singer').textContent = currentSinger;
   document.getElementById('slate-singer').style.display = currentSinger ? '' : 'none';
   document.getElementById('slate-title').textContent = currentTitle;
-  slate.style.display = 'flex';
+  slate.style.display = slate.classList.contains('crowd') ? 'grid' : 'flex';
   requestAnimationFrame(() => requestAnimationFrame(() => slate.classList.add('visible')));
 }
 
 function hideSlate(callback) {
   if (hideSlateTimer) { clearTimeout(hideSlateTimer); hideSlateTimer = null; }
+  fadeStandbyVolume(0);
   const slate = document.getElementById('singer-slate');
   slate.classList.remove('visible');
   hideSlateTimer = setTimeout(() => {
@@ -139,11 +235,43 @@ function hideSlate(callback) {
   }, 560);
 }
 
+// ── Crowd QR helpers ────────────────────────────────────────────────────────────
+
+function loadSlateQR() {
+  if (slateQrLoaded) return;
+  const requestUrl = location.origin + '/request/?s=' + encodeURIComponent(sessionId);
+  document.querySelectorAll('.scq-url').forEach(el => { el.textContent = requestUrl; });
+  fetch('/api/qr?s=' + encodeURIComponent(sessionId) + '&data=' + encodeURIComponent(requestUrl))
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (d && d.dataUrl) {
+        document.querySelectorAll('.scq-img').forEach(el => { el.src = d.dataUrl; });
+        slateQrLoaded = true;
+      }
+    })
+    .catch(() => {});
+}
+
+function applySlateQR() {
+  const crowd  = requestMode === 'crowd';
+  const idleEl = document.getElementById('idle');
+  const slateEl = document.getElementById('singer-slate');
+  idleEl.classList.toggle('crowd', crowd);
+  slateEl.classList.toggle('crowd', crowd);
+  // Update inline display for any currently-visible slate.
+  if (idleEl.style.display  === 'flex' || idleEl.style.display  === 'grid')
+    idleEl.style.display  = crowd ? 'grid' : 'flex';
+  if (slateEl.style.display === 'flex' || slateEl.style.display === 'grid')
+    slateEl.style.display = crowd ? 'grid' : 'flex';
+  if (crowd) loadSlateQR();
+}
+
 function showEmbedError(videoId) {
   embedFailed = true;
   shouldPauseOnPlay = false;
   showingSlate = false;
   hideSlate(null);
+  fadeStandbyVolume(standbyTargetVol);
   if (ytPlayer && typeof ytPlayer.stopVideo === 'function') ytPlayer.stopVideo();
   document.getElementById('embed-thumb').src =
     'https://img.youtube.com/vi/' + videoId + '/maxresdefault.jpg';
@@ -157,12 +285,62 @@ function showIdle() {
   shouldPauseOnPlay = false;
   showingSlate = false;
   hideSlate(null);
+  if (userActivated) {
+    if (pendingPlaylistId) {
+      const pid = pendingPlaylistId;
+      pendingPlaylistId = null;
+      loadStandbyPlaylist(pid);
+    } else {
+      fadeStandbyVolume(standbyTargetVol);
+    }
+  }
   const idle = document.getElementById('idle');
-  idle.style.display = 'flex';
+  idle.style.display = idle.classList.contains('crowd') ? 'grid' : 'flex';
   requestAnimationFrame(() => requestAnimationFrame(() => idle.classList.add('visible')));
   document.getElementById('embed-error').style.display = 'none';
   if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
     ytPlayer.stopVideo();
+  }
+}
+
+// ── Standby music helpers ─────────────────────────────────────────────────────
+
+function fadeStandbyVolume(target) {
+  if (!standbyPlayer || typeof standbyPlayer.setVolume !== 'function') return;
+  if (standbyFadeTimer) { clearInterval(standbyFadeTimer); standbyFadeTimer = null; }
+  const start = standbyPlayer.getVolume ? standbyPlayer.getVolume() : 0;
+  const steps = 30;
+  const stepMs = Math.max(16, fadeDurationMs / steps);
+  let step = 0;
+  standbyFadeTimer = setInterval(() => {
+    step++;
+    const v = Math.round(start + (target - start) * (step / steps));
+    standbyPlayer.setVolume(Math.max(0, Math.min(100, v)));
+    if (step >= steps) { clearInterval(standbyFadeTimer); standbyFadeTimer = null; }
+  }, stepMs);
+}
+
+function loadStandbyPlaylist(id) {
+  if (!standbyPlayer || typeof standbyPlayer.loadPlaylist !== 'function') {
+    pendingPlaylistId = id;
+    return;
+  }
+  currentPlaylistId = id;
+  pendingPlaylistId = null;
+  standbyPlayer.setVolume(0);
+  standbyPlayer.loadPlaylist({ listType: 'playlist', list: id, index: 0 });
+  standbyPlayer.playVideo();
+  // Only make audible once the user has activated the player.
+  if (userActivated) fadeStandbyVolume(standbyTargetVol);
+}
+
+function stopStandby() {
+  if (standbyFadeTimer) { clearInterval(standbyFadeTimer); standbyFadeTimer = null; }
+  currentPlaylistId = null;
+  pendingPlaylistId = null;
+  if (standbyPlayer && typeof standbyPlayer.stopVideo === 'function') {
+    standbyPlayer.setVolume(0);
+    standbyPlayer.stopVideo();
   }
 }
 
@@ -210,8 +388,43 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'standby-skip') {
+      if (standbyPlayer && typeof standbyPlayer.nextVideo === 'function') standbyPlayer.nextVideo();
+      return;
+    }
+
     if (msg.type === 'state') {
       updateGateStatus(!!msg.controllerConnected);
+
+      if (msg.requestMode !== undefined && msg.requestMode !== requestMode) {
+        requestMode = msg.requestMode || null;
+        applySlateQR();
+      }
+
+      // Sync mix settings from the mixer page.
+      if (typeof msg.standbyVolume  === 'number') {
+        standbyTargetVol = msg.standbyVolume;
+        if (userActivated && currentPlaylistId && !currentVideoId) fadeStandbyVolume(standbyTargetVol);
+      }
+      if (typeof msg.videoVolume    === 'number') {
+        videoTargetVol = msg.videoVolume;
+        if (ytPlayer && typeof ytPlayer.setVolume === 'function' && currentVideoId) {
+          ytPlayer.setVolume(videoTargetVol);
+        }
+      }
+      if (typeof msg.fadeDuration   === 'number') fadeDurationMs   = msg.fadeDuration;
+
+      // Sync mic settings.
+      if (typeof msg.micVolume === 'number')  { micTargetVol = msg.micVolume; applyMicGain(); }
+      if (typeof msg.micMuted  === 'boolean') { micMuted = msg.micMuted;      applyMicGain(); }
+
+      // Sync standby playlist.
+      const incomingPlaylist = msg.standbyPlaylistId || null;
+      if (incomingPlaylist !== currentPlaylistId) {
+        if (incomingPlaylist) loadStandbyPlaylist(incomingPlaylist);
+        else stopStandby();
+      }
+
       if (msg.nowPlaying) {
         currentTitle  = msg.nowPlaying.title  || '';
         currentSinger = msg.nowPlaying.singer || '';
@@ -235,6 +448,13 @@ function connect() {
 
   ws.onclose = function () {
     setTimeout(connect, 3000);
+  };
+
+  ws.onopen = function () {
+    // Report mic status on reconnect so the controller card stays accurate.
+    if (micStream) {
+      ws.send(JSON.stringify({ type: 'mic-status', ready: true }));
+    }
   };
 }
 

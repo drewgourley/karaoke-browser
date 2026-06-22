@@ -35,7 +35,6 @@ const requesterBadge     = document.getElementById('requester-badge');
 const requesterBadgeText = document.getElementById('requester-badge-text');
 const reqLinkBtn         = document.getElementById('req-link-btn');
 const kioskLinkBtn       = document.getElementById('kiosk-link-btn');
-
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let ws;
 
@@ -54,6 +53,11 @@ function connect() {
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === 'mic-status') {
+      micReady = msg.ready;
+      renderMixer();
+      return;
+    }
     if (msg.type === 'state') {
       state = msg;
       render();
@@ -77,7 +81,7 @@ function connect() {
         requesterBadge.hidden = rc === 0;
         if (requesterBadgeText) {
           requesterBadgeText.textContent = state.requestMode === 'kiosk'
-            ? 'KIOSK CONNECTED'
+            ? 'KIOSK'
             : rc + ' REQUESTER' + (rc === 1 ? '' : 'S');
         }
         if (reqLinkBtn)   reqLinkBtn.hidden   = state.requestMode !== 'crowd';
@@ -106,6 +110,7 @@ function render() {
   renderNP();
   renderQueue();
   renderRequests();
+  renderMixer();
 }
 
 function renderNP() {
@@ -510,6 +515,307 @@ kioskLinkCopyBtn.addEventListener('click', () => {
 
 kioskLinkCloseBtn.addEventListener('click', () => { kioskLinkModal.hidden = true; });
 kioskLinkModal.addEventListener('click', e => { if (e.target === kioskLinkModal) kioskLinkModal.hidden = true; });
+
+// ── Mixer panel ──────────────────────────────────────────────────────────
+const mixerPanel        = document.getElementById('mixer-panel');
+const mixerHandle       = document.getElementById('mixer-handle');
+const mxStandbyVolSlider = document.getElementById('standby-vol-slider');
+const mxStandbyVolValue  = document.getElementById('standby-vol-value');
+const mxVideoVolSlider   = document.getElementById('video-vol-slider');
+const mxVideoVolValue    = document.getElementById('video-vol-value');
+const mxMicVolSlider     = document.getElementById('mic-vol-slider');
+const mxMicVolValue      = document.getElementById('mic-vol-value');
+const mxMicMuteBtn       = document.getElementById('mic-mute-btn');
+const mxMicDot           = document.getElementById('mic-status-dot');
+const mxMicHint          = document.getElementById('mic-hint');
+const mxStandbyNPEl     = document.getElementById('standby-now-playing');
+const mxStandbyDot      = document.getElementById('standby-dot');
+const mxStandbyName     = document.getElementById('standby-name');
+const mxClearStandbyBtn = document.getElementById('clear-standby-btn');
+const mxTabSearch       = document.getElementById('mx-tab-search');
+const mxTabUrl          = document.getElementById('mx-tab-url');
+const mxPanelSearch     = document.getElementById('mx-panel-search');
+const mxPanelUrl        = document.getElementById('mx-panel-url');
+const mxUrlInput        = document.getElementById('mx-url-input');
+const mxSetBtn          = document.getElementById('mx-set-btn');
+const mxSearchInput     = document.getElementById('mx-search-input');
+const mxSearchBtn       = document.getElementById('mx-search-btn');
+const mxSearchStatus    = document.getElementById('mx-search-status');
+const mxSearchResults   = document.getElementById('mx-search-results');
+
+const MX_HANDLE_H  = 40;
+let micReady = null; // null=unknown, true=ready, false=denied/unavailable
+const MX_DEFAULT_H = 320;
+let mxOpenHeight   = parseInt(localStorage.getItem('kk_mixer_h') || '0') || MX_DEFAULT_H;
+let mxOpen         = localStorage.getItem('kk_mixer_open') === 'true';
+let mxDragStartY   = null;
+let mxDragStartH   = null;
+let mxDragged      = false;
+
+function mxSetHeight(h) {
+  mixerPanel.style.height = h + 'px';
+  document.body.style.paddingBottom = h + 'px';
+}
+
+function mxApplyOpen() {
+  mxSetHeight(mxOpen ? mxOpenHeight : MX_HANDLE_H);
+}
+
+function mxToggle() {
+  mxOpen = !mxOpen;
+  localStorage.setItem('kk_mixer_open', mxOpen);
+  mxApplyOpen();
+}
+
+mxApplyOpen();
+
+mixerHandle.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  mxDragged = false;
+  mxDragStartY = e.clientY;
+  mxDragStartH = mixerPanel.offsetHeight;
+  document.body.style.userSelect = 'none';
+  document.body.style.cursor = 'ns-resize';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+  if (mxDragStartY === null) return;
+  const delta = mxDragStartY - e.clientY;
+  if (Math.abs(delta) > 5) mxDragged = true;
+  if (!mxDragged) return;
+  const newH = Math.max(MX_HANDLE_H, Math.min(Math.floor(window.innerHeight * 0.8), mxDragStartH + delta));
+  mxSetHeight(newH);
+  if (newH > MX_HANDLE_H + 20) { mxOpen = true; mxOpenHeight = newH; }
+});
+
+document.addEventListener('mouseup', () => {
+  if (mxDragStartY === null) return;
+  const wasDrag = mxDragged;
+  mxDragStartY = null;
+  mxDragStartH = null;
+  mxDragged = false;
+  document.body.style.userSelect = '';
+  document.body.style.cursor = '';
+  if (!wasDrag) { mxToggle(); return; }
+  const h = mixerPanel.offsetHeight;
+  if (h <= MX_HANDLE_H + 30) {
+    mxOpen = false;
+    mxSetHeight(MX_HANDLE_H);
+  } else {
+    mxOpen = true;
+    mxOpenHeight = h;
+  }
+  localStorage.setItem('kk_mixer_open', mxOpen);
+  localStorage.setItem('kk_mixer_h', mxOpenHeight);
+});
+
+mixerHandle.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  mxDragged = false;
+  mxDragStartY = t.clientY;
+  mxDragStartH = mixerPanel.offsetHeight;
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  if (mxDragStartY === null) return;
+  const t = e.touches[0];
+  const delta = mxDragStartY - t.clientY;
+  if (Math.abs(delta) > 5) mxDragged = true;
+  if (!mxDragged) return;
+  const newH = Math.max(MX_HANDLE_H, Math.min(Math.floor(window.innerHeight * 0.8), mxDragStartH + delta));
+  mxSetHeight(newH);
+  if (newH > MX_HANDLE_H + 20) { mxOpen = true; mxOpenHeight = newH; }
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  if (mxDragStartY === null) return;
+  const wasDrag = mxDragged;
+  mxDragStartY = null;
+  mxDragStartH = null;
+  mxDragged = false;
+  if (!wasDrag) { mxToggle(); return; }
+  const h = mixerPanel.offsetHeight;
+  if (h <= MX_HANDLE_H + 30) {
+    mxOpen = false;
+    mxSetHeight(MX_HANDLE_H);
+  } else {
+    mxOpen = true;
+    mxOpenHeight = h;
+  }
+  localStorage.setItem('kk_mixer_open', mxOpen);
+  localStorage.setItem('kk_mixer_h', mxOpenHeight);
+});
+
+// ── Mixer tabs ───────────────────────────────────────────────────────────
+mxTabSearch.addEventListener('click', () => {
+  mxTabSearch.classList.add('active');  mxTabUrl.classList.remove('active');
+  mxPanelSearch.style.display = '';    mxPanelUrl.style.display = 'none';
+  mxSearchInput.focus();
+});
+mxTabUrl.addEventListener('click', () => {
+  mxTabUrl.classList.add('active');    mxTabSearch.classList.remove('active');
+  mxPanelUrl.style.display = '';       mxPanelSearch.style.display = 'none';
+  mxUrlInput.focus();
+});
+
+// ── Mixer render ─────────────────────────────────────────────────────────
+function renderMixer() {
+  if (document.activeElement !== mxStandbyVolSlider) {
+    mxStandbyVolSlider.value = state.standbyVolume ?? 75;
+    mxStandbyVolValue.textContent = mxStandbyVolSlider.value;
+  }
+  if (document.activeElement !== mxVideoVolSlider) {
+    mxVideoVolSlider.value = state.videoVolume ?? 100;
+    mxVideoVolValue.textContent = mxVideoVolSlider.value;
+  }
+  // Mic controls
+  const micActive = micReady === true;
+  mxMicVolSlider.disabled = !micActive;
+  mxMicMuteBtn.disabled   = !micActive;
+  if (document.activeElement !== mxMicVolSlider) {
+    mxMicVolSlider.value = state.micVolume ?? 80;
+    mxMicVolValue.textContent = mxMicVolSlider.value;
+  }
+  const muted = !!state.micMuted;
+  mxMicMuteBtn.checked = !muted;
+  mxMicDot.className = 'status-dot-sm' + (micActive && !muted ? ' on' : '');
+  mxMicHint.textContent = micReady === null ? 'Awaiting player…'
+    : micReady === false ? 'Permission denied or unavailable'
+    : muted ? 'Muted' : 'Active';
+
+  // Standby playlist status row (col 2)
+  const active = !!state.standbyPlaylistId;
+  mxStandbyDot.className = 'status-dot-sm' + (active ? ' on' : '');
+  mxStandbyName.textContent = active
+    ? (state.standbyPlaylistTitle || state.standbyPlaylistId)
+    : 'No playlist set';
+  mxStandbyName.className = active ? 'active' : '';
+  mxClearStandbyBtn.hidden = !active;
+
+  // Standby now-playing card (col 1)
+  if (!active) {
+    mxStandbyNPEl.innerHTML = '<span class="np-idle">No playlist set</span>';
+  } else {
+    const track = state.standbyTrack; // { videoId, title } or null
+    const playlistLabel = state.standbyPlaylistTitle || state.standbyPlaylistId;
+    let thumbHtml, cardTitle, singerHtml;
+    if (track && track.videoId) {
+      thumbHtml  = '<img class="np-thumb" src="https://img.youtube.com/vi/' + esc(track.videoId) + '/hqdefault.jpg" alt="">';
+      cardTitle  = track.title || track.videoId;
+      singerHtml = '🎵 ' + esc(playlistLabel || 'Standby Music');
+    } else {
+      const rawThumb = state.standbyPlaylistThumbnail || '';
+      thumbHtml  = rawThumb
+        ? '<img class="np-thumb" src="' + esc(rawThumb) + '" alt="">'
+        : '<div class="np-thumb np-thumb-placeholder">🎵</div>';
+      cardTitle  = playlistLabel;
+      singerHtml = '🎵 Standby Music';
+    }
+    mxStandbyNPEl.innerHTML =
+      '<div class="np-wrap">' +
+        thumbHtml +
+        '<div class="np-info">' +
+          '<div class="np-title" title="' + esc(cardTitle) + '">' + esc(cardTitle) + '</div>' +
+          '<div class="np-singer">' + singerHtml + '</div>' +
+          '<button class="ghost standby-skip-btn" title="Skip to next track">⏭ Skip</button>' +
+        '</div>' +
+      '</div>';
+  }
+}
+
+// ── Mixer slider handlers ─────────────────────────────────────────────────
+function mxMakeSlider(slider, valueEl, msgType, fmt) {
+  let t = null;
+  slider.addEventListener('input', () => {
+    valueEl.textContent = fmt(slider.value);
+    clearTimeout(t);
+    t = setTimeout(() => send({ type: msgType, volume: Number(slider.value) }), 150);
+  });
+}
+mxMakeSlider(mxStandbyVolSlider, mxStandbyVolValue, 'set-standby-volume', v => v);
+mxMakeSlider(mxVideoVolSlider,   mxVideoVolValue,   'set-video-volume',   v => v);
+mxMakeSlider(mxMicVolSlider,     mxMicVolValue,     'set-mic-volume',     v => v);
+
+mxMicMuteBtn.addEventListener('change', () => send({ type: 'mic-mute', muted: !mxMicMuteBtn.checked }));
+
+// ── Mixer set standby by URL ──────────────────────────────────────────────
+mxSetBtn.addEventListener('click', () => {
+  const url = mxUrlInput.value.trim();
+  if (!url) { mxUrlInput.focus(); return; }
+  send({ type: 'set-standby-playlist', url });
+  mxUrlInput.value = '';
+});
+mxUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') mxSetBtn.click(); });
+
+// ── Mixer clear standby ───────────────────────────────────────────────────
+mxClearStandbyBtn.addEventListener('click', () => send({ type: 'clear-standby' }));
+
+// ── Mixer standby skip ───────────────────────────────────────────────────
+mxStandbyNPEl.addEventListener('click', e => {
+  if (e.target.closest('.standby-skip-btn')) send({ type: 'standby-skip' });
+});
+
+// ── Mixer playlist search ─────────────────────────────────────────────────
+async function mxDoSearch() {
+  const q = mxSearchInput.value.trim();
+  if (!q) { mxSearchInput.focus(); return; }
+  mxSearchBtn.disabled = true;
+  mxSearchBtn.textContent = '…';
+  mxSearchStatus.hidden = false;
+  mxSearchStatus.className = 'mixer-search-status';
+  mxSearchStatus.textContent = 'Searching…';
+  mxSearchResults.innerHTML = '';
+  try {
+    const r    = await fetch('/api/mixer/search?q=' + encodeURIComponent(q));
+    const data = await r.json();
+    if (data.error === 'not_configured') {
+      mxSearchStatus.textContent = 'Playlist search requires a YouTube API key — URL paste still works.';
+      mxSearchStatus.className = 'mixer-search-status warn';
+      return;
+    }
+    if (data.error) {
+      mxSearchStatus.textContent = 'Search failed — try again.';
+      mxSearchStatus.className = 'mixer-search-status warn';
+      return;
+    }
+    const items = data.items || [];
+    if (items.length === 0) {
+      mxSearchStatus.textContent = 'No playlists found.';
+      return;
+    }
+    mxSearchStatus.hidden = true;
+    mxSearchResults.innerHTML = items.map(item =>
+      '<div class="sr-item">' +
+        '<img class="sr-thumb" src="' + esc(item.thumbnail) + '" alt="" loading="lazy">' +
+        '<div class="sr-info">' +
+          '<div class="sr-title" title="' + esc(item.title) + '">' + esc(item.title) + '</div>' +
+          '<div class="sr-channel">' + esc(item.channelTitle) + '</div>' +
+        '</div>' +
+        '<button class="secondary btn-use" data-id="' + esc(item.playlistId) + '" data-title="' + esc(item.title) + '" data-thumb="' + esc(item.thumbnail) + '">Use</button>' +
+      '</div>'
+    ).join('');
+  } catch {
+    mxSearchStatus.textContent = 'Search failed — check your connection.';
+    mxSearchStatus.className = 'mixer-search-status warn';
+  } finally {
+    mxSearchBtn.disabled = false;
+    mxSearchBtn.textContent = 'Search';
+  }
+}
+mxSearchBtn.addEventListener('click', mxDoSearch);
+mxSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') mxDoSearch(); });
+
+mxSearchResults.addEventListener('click', e => {
+  const btn = e.target.closest('.btn-use');
+  if (!btn) return;
+  send({ type: 'set-standby-playlist', url: 'https://www.youtube.com/playlist?list=' + btn.dataset.id, title: btn.dataset.title, thumbnail: btn.dataset.thumb || undefined });
+  btn.textContent = '✓ Set';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = 'Use'; btn.disabled = false; }, 2000);
+});
 
 // ── Init ───────────────────────────────────────────────────────────────────
 connect();

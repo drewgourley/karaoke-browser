@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 require('dotenv').config();
 
 const express = require('express');
@@ -218,11 +218,12 @@ subRedis.on('error', err => logger.error('Redis sub error:', err.message));
 
 // ── Redis key schema ──────────────────────────────────────────────────────────
 const K = {
-  session:  id => `kk:session:${id}`,
-  presence: id => `kk:presence:${id}`,
-  sessions: ()  => 'kk:sessions',
-  search:   q   => `kk:search:${q}`,
-  channel:  id => `kk:state:${id}`,
+  session:        id => `kk:session:${id}`,
+  presence:       id => `kk:presence:${id}`,
+  sessions:       ()  => 'kk:sessions',
+  search:         q   => `kk:search:${q}`,
+  playlistSearch: q   => `kk:plsearch:${q}`,
+  channel:        id => `kk:state:${id}`,
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -230,16 +231,25 @@ const SESSION_TTL_SECS = (Number(process.env.SESSION_TTL_HOURS) || 4) * 60 * 60;
 
 function newSessionData() {
   return {
-    queue:          [],
-    nowPlaying:     null,
-    paused:         false,
-    nextId:         1,
-    requests:       [],
-    nextRequestId:  1,
-    requestMode:    'kiosk',   // 'kiosk' | 'crowd'
-    blockedDevices: [],        // device tokens awaiting processing (crowd mode)
-    bannedDevices:  [],        // permanently banned device tokens for this session
-    lastActivity:   Date.now(),
+    queue:                [],
+    nowPlaying:           null,
+    paused:               false,
+    nextId:               1,
+    requests:             [],
+    nextRequestId:        1,
+    requestMode:          'kiosk',   // 'kiosk' | 'crowd'
+    blockedDevices:       [],        // device tokens awaiting processing (crowd mode)
+    bannedDevices:        [],        // permanently banned device tokens for this session
+    standbyPlaylistId:        null,  // YouTube playlist ID for standby music
+    standbyPlaylistTitle:     null,  // display name (set from search)
+    standbyPlaylistThumbnail: null,  // thumbnail URL (set from search)
+    standbyTrack:             null,  // { videoId, title } — currently playing track
+    standbyVolume:            75,    // 0–100: standby target volume
+    videoVolume:          100,       // 0–100: karaoke video volume
+    fadeDuration:         1500,      // ms: crossfade speed (500–5000)
+    micVolume:            80,        // 0–100: microphone gain
+    micMuted:             false,     // microphone muted
+    lastActivity:         Date.now(),
   };
 }
 
@@ -406,19 +416,38 @@ async function broadcastState(sessionId) {
   ]);
   if (!session) return;
   await publishRaw(sessionId, {
-    type:               'state',
-    queue:               session.queue,
-    nowPlaying:          session.nowPlaying,
-    paused:              session.paused,
-    playerConnected:     Number(presenceArr[0]) > 0,
-    controllerConnected: Number(presenceArr[1]) > 0,
-    requesterCount:      Math.max(0, Number(presenceArr[2])),
+    type:                 'state',
+    queue:                 session.queue,
+    nowPlaying:            session.nowPlaying,
+    paused:                session.paused,
+    playerConnected:       Number(presenceArr[0]) > 0,
+    controllerConnected:   Number(presenceArr[1]) > 0,
+    requesterCount:        Math.max(0, Number(presenceArr[2])),
     // Strip deviceToken from requests — it is stored server-side only.
-    requests:            session.requests.map(({ deviceToken: _dt, ...r }) => r),
-    requestMode:         session.requestMode,
-    blockedCount:        (session.blockedDevices || []).length,
-    bannedCount:         (session.bannedDevices  || []).length,
+    requests:              session.requests.map(({ deviceToken: _dt, ...r }) => r),
+    requestMode:           session.requestMode,
+    blockedCount:          (session.blockedDevices || []).length,
+    bannedCount:           (session.bannedDevices  || []).length,
+    standbyPlaylistId:     session.standbyPlaylistId    || null,
+    standbyPlaylistTitle:     session.standbyPlaylistTitle     || null,
+    standbyPlaylistThumbnail: session.standbyPlaylistThumbnail || null,
+    standbyTrack:             session.standbyTrack             || null,
+    standbyVolume:            session.standbyVolume  ?? 75,
+    videoVolume:           session.videoVolume    ?? 100,
+    fadeDuration:          session.fadeDuration   ?? 1500,
+    micVolume:             session.micVolume      ?? 80,
+    micMuted:              !!session.micMuted,
   });
+}
+
+/** Extract a YouTube playlist ID from any YouTube / YouTube Music URL. */
+function extractPlaylistId(url) {
+  if (typeof url !== 'string') return null;
+  const m = url.match(/[?&]list=([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  // YouTube Music sometimes prepends 'VL' — strip it.
+  const id = m[1].replace(/^VL/, '');
+  return id.length >= 2 ? id : null;
 }
 
 /** Extract a YouTube video ID from common URL formats. */
@@ -571,6 +600,26 @@ app.post('/api/session/mode', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Reset a session back to a clean state (clear queue, now playing, requests, etc.).
+app.post('/api/session/reset', async (req, res) => {
+  if (AUTH_HASH && getCookie(req, 'kp_auth') !== AUTH_HASH) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { sessionId } = req.body || {};
+  if (!sessionId || typeof sessionId !== 'string') {
+    return res.status(400).json({ error: 'Missing sessionId' });
+  }
+  const existing = await getSession(sessionId);
+  if (!existing) return res.status(404).json({ error: 'Session not found' });
+  // Preserve request mode — carry it over to the fresh state.
+  const fresh = newSessionData();
+  fresh.requestMode = existing.requestMode || 'kiosk';
+  await saveSession(sessionId, fresh);
+  await broadcastState(sessionId);
+  logger.info(`Session reset  session=${sid(sessionId)}`);
+  res.json({ ok: true });
+});
+
 // ── REST – title lookup ───────────────────────────────────────────────────────
 
 app.get('/api/title', titleLimiter, async (req, res) => {
@@ -688,8 +737,55 @@ app.get('/api/search', searchLimiter, async (req, res) => {
     res.status(500).json({ error: 'Search failed — check server logs' });
   }
 });
+// ── REST – Mixer playlist search ──────────────────────────────────────────────
 
-// QR code for any URL (used by the index page to generate the request-link QR).
+app.get('/api/mixer/search', searchLimiter, async (req, res) => {
+  if (!YT_KEYS.length) {
+    return res.status(503).json({ error: 'not_configured' });
+  }
+  const raw = req.query.q;
+  if (!raw || typeof raw !== 'string') return res.json({ items: [] });
+  const q = sanitiseTitle(raw).slice(0, 150);
+  if (!q) return res.json({ items: [] });
+
+  const cacheKey = K.playlistSearch(q);
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    logger.debug(`Playlist search cache hit  q="${q}"`);
+    return res.json({ items: JSON.parse(cached) });
+  }
+
+  const apiKey = getNextKey();
+  if (!apiKey) {
+    return res.status(503).json({ error: 'quota_exhausted' });
+  }
+
+  try {
+    const searchUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet' +
+      '&type=playlist&maxResults=12' +
+      '&q=' + encodeURIComponent(q) +
+      '&key=' + encodeURIComponent(apiKey);
+    const sr = await fetch(searchUrl, { signal: AbortSignal.timeout(8000) });
+    if (sr.status === 403) {
+      retireKey(apiKey);
+      return res.status(503).json({ error: 'quota_exhausted' });
+    }
+    if (!sr.ok) throw new Error(`HTTP ${sr.status}`);
+    const sd = await sr.json();
+    const items = (sd.items || []).map(i => ({
+      playlistId:   i.id.playlistId,
+      title:        sanitiseTitle(decodeEntities(i.snippet.title)).slice(0, 120),
+      channelTitle: sanitiseTitle(decodeEntities(i.snippet.channelTitle)).slice(0, 80),
+      thumbnail:    i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url || '',
+    })).filter(i => i.playlistId);
+    await redis.set(cacheKey, JSON.stringify(items), 'EX', SEARCH_CACHE_TTL_SECS);
+    logger.debug(`Playlist search complete  q="${q}"  results=${items.length}`);
+    res.json({ items });
+  } catch (e) {
+    logger.error('Playlist search error:', e.message);
+    res.status(500).json({ error: 'search_failed' });
+  }
+});
 app.get('/api/qr', qrLimiter, async (req, res) => {
   const sessionId = req.query.s;
   if (!sessionId || !(await getSession(sessionId))) {
@@ -746,7 +842,18 @@ wss.on('connection', async (ws, req) => {
   ws._hasRequestSlot = false;
   if (role === 'controller' || role === 'player') {
     const connId  = randomBytes(8).toString('hex');
-    const claimed = await claimSlot(sessionId, role, connId);
+    let claimed = await claimSlot(sessionId, role, connId);
+    if (!claimed) {
+      // Slot exists in Redis — check if a live local WS actually holds it.
+      // If not, it's a stale slot left by a server restart before the TTL expired.
+      const localSet = localClients.get(sessionId);
+      const hasLiveLocal = localSet && [...localSet].some(c => c.role === role && c.readyState === 1);
+      if (!hasLiveLocal) {
+        await redis.set(slotKey(sessionId, role), connId, 'EX', SLOT_TTL_SECS);
+        claimed = true;
+        logger.info(`WS stale slot evicted  role=${role} session=${sid(sessionId)} ip=${ip}`);
+      }
+    }
     if (!claimed) {
       logger.warn(`WS slot occupied  role=${role} session=${sid(sessionId)} ip=${ip}`);
       ws.close(4409, 'Role already connected');
@@ -787,7 +894,7 @@ wss.on('connection', async (ws, req) => {
     removeLocalClient(sessionId, ws);
     await markPresence(sessionId, role, -1);
     logger.info(`WS disconnect role=${role.padEnd(10)} session=${sid(sessionId)} code=${code}`);
-    if (ws.role === 'player' || ws.role === 'controller' || ws.role === 'request') await broadcastState(sessionId);
+    if (role === 'player' || role === 'controller' || role === 'request') await broadcastState(sessionId);
   });
 
   ws.on('message', (raw) => {
@@ -1016,6 +1123,98 @@ wss.on('connection', async (ws, req) => {
         }
         break;
       }
+
+      case 'set-standby-playlist': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        const playlistId = extractPlaylistId(msg.url || '');
+        if (!playlistId) break;
+        session.standbyPlaylistId        = playlistId;
+        session.standbyPlaylistTitle     = typeof msg.title     === 'string' ? msg.title.slice(0, 120)     : null;
+        session.standbyPlaylistThumbnail = typeof msg.thumbnail === 'string' ? msg.thumbnail.slice(0, 500) : null;
+        session.standbyTrack             = null; // clear stale track from previous playlist
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        logger.info(`Standby playlist set  session=${sid(sessionId)}  id=${playlistId}`);
+        break;
+      }
+
+      case 'clear-standby': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        session.standbyPlaylistId        = null;
+        session.standbyPlaylistTitle     = null;
+        session.standbyPlaylistThumbnail = null;
+        session.standbyTrack             = null;
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'set-mic-volume': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        const mv = Number(msg.volume);
+        if (!Number.isFinite(mv)) break;
+        session.micVolume = Math.round(Math.max(0, Math.min(100, mv)));
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'mic-mute': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        session.micMuted = !!msg.muted;
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'mic-status': {
+        if (role !== 'player') break;
+        // Relay status to all clients (controllers) without persisting.
+        await publishRaw(sessionId, { type: 'mic-status', ready: !!msg.ready, reason: msg.reason || null });
+        break;
+      }
+
+      case 'standby-skip': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        if (!session.standbyPlaylistId) break;
+        await publishRaw(sessionId, { type: 'standby-skip' });
+        break;
+      }
+
+      case 'standby-track': {
+        if (role !== 'player') break;
+        const trackVideoId = typeof msg.videoId === 'string'
+          ? msg.videoId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 20)
+          : null;
+        if (!trackVideoId || !session.standbyPlaylistId) break;
+        const trackTitle = typeof msg.title === 'string' ? msg.title.slice(0, 200) : null;
+        session.standbyTrack = { videoId: trackVideoId, title: trackTitle };
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'set-standby-volume': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        const sv = Number(msg.volume);
+        if (!Number.isFinite(sv)) break;
+        session.standbyVolume = Math.round(Math.max(0, Math.min(100, sv)));
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'set-video-volume': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        const vv = Number(msg.volume);
+        if (!Number.isFinite(vv)) break;
+        session.videoVolume = Math.round(Math.max(0, Math.min(100, vv)));
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+
 
       case 'ban-device': {
         // Controller only. Ban a device by its request ID — removes the request
