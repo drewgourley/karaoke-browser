@@ -10,15 +10,51 @@ const createError   = document.getElementById('create-error');
 const roomLinks     = document.getElementById('room-links');
 const controllerBtn = document.getElementById('controller-btn');
 const playerBtn     = document.getElementById('player-btn');
-const newRoomBtn    = document.getElementById('new-room-btn');
 const logoutBtn     = document.getElementById('logout-btn');
 const requestLinkRow  = document.getElementById('request-link-row');
 const requestUrlInput = document.getElementById('request-url');
 const copyRequestBtn  = document.getElementById('copy-request-btn');
-const requestQr       = document.getElementById('request-qr');
+const requestQrBtn    = document.getElementById('request-qr-btn');
+const requestQrModal  = document.getElementById('request-qr-modal');
+const requestQrImg    = document.getElementById('request-qr-img');
+const requestQrClose  = document.getElementById('request-qr-close');
+const requestLinkLabel = document.getElementById('request-link-label');
+const reqModeToggle   = document.getElementById('req-mode-toggle');
+const displayLinkRow   = document.getElementById('display-link-row');
+const displayUrlInput  = document.getElementById('display-url-input');
+const copyDisplayBtn   = document.getElementById('copy-display-btn');
+const openDisplayLink  = document.getElementById('open-display-link');
+const openRequestLink  = document.getElementById('open-request-link');
+const displayQrBtn     = document.getElementById('display-qr-btn');
+const displayQrModal   = document.getElementById('display-qr-modal');
+const displayQrImg     = document.getElementById('display-qr-img');
+const displayQrClose   = document.getElementById('display-qr-close');
 
 let currentSessionId = null;
 let authMode = false; // true when AUTH_TOKEN is active on the server
+let currentMode = 'kiosk';
+
+// ── Session persistence (localStorage) ──────────────────────────────────────
+const LS_KEY = 'kk_session';
+function saveSessionToStorage()  { try { localStorage.setItem(LS_KEY, JSON.stringify({ sessionId: currentSessionId, requestMode: currentMode })); } catch {} }
+function clearSessionFromStorage() { try { localStorage.removeItem(LS_KEY); } catch {} }
+function loadSessionFromStorage()  { try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { return null; } }
+
+async function tryRestoreOrShowCreate() {
+  const stored = loadSessionFromStorage();
+  if (!stored || !stored.sessionId) return showCreate();
+  try {
+    const r = await fetch('/api/session?s=' + encodeURIComponent(stored.sessionId));
+    if (!r.ok) throw new Error('gone');
+    const { sessionId, requestMode } = await r.json();
+    currentSessionId = sessionId;
+    currentMode = requestMode || 'kiosk';
+    showRoomLinks();
+  } catch {
+    clearSessionFromStorage();
+    showCreate();
+  }
+}
 
 // ── Redirect helpers ──────────────────────────────────────────────────────
 
@@ -61,10 +97,10 @@ fetch('/api/auth-status')
       // Session is deterministic in auth mode so it's safe to auto-proceed.
       autoStartAndRedirect();
     } else {
-      showCreate();
+      tryRestoreOrShowCreate();
     }
   })
-  .catch(() => showCreate()); // if the check fails, optimistically show create
+  .catch(() => tryRestoreOrShowCreate()); // if the check fails, optimistically show create
 
 // ── Views ──────────────────────────────────────────────────────────────────
 
@@ -85,26 +121,53 @@ function showCreate() {
   createBtn.textContent = 'Start Karaoke Night';
 }
 
+function updateLinkLabel(mode) {
+  if (!requestLinkLabel) return;
+  requestLinkLabel.textContent = mode === 'kiosk'
+    ? '🔗 Use this link to open the song request form'
+    : '🔗 Share this link so guests can request songs';
+  // In kiosk mode show the QR button; crowd mode hides it (display page QR serves that purpose).
+  if (requestQrBtn) requestQrBtn.classList.toggle('hidden', mode === 'crowd');
+  // Show the crowd display link only in crowd mode.
+  if (displayLinkRow) {
+    displayLinkRow.classList.toggle('hidden', mode !== 'crowd');
+    if (displayQrBtn) displayQrBtn.classList.toggle('hidden', mode !== 'crowd');
+    if (mode !== 'crowd') {
+      if (displayQrImg) { displayQrImg.src = ''; }
+    }
+    if (mode === 'crowd' && currentSessionId) {
+      const url = location.origin + '/display/?s=' + encodeURIComponent(currentSessionId);
+      if (displayUrlInput)  displayUrlInput.value = url;
+      if (openDisplayLink)  openDisplayLink.href  = url;
+      if (displayQrImg && !displayQrImg.src.startsWith('data:')) {
+        fetch('/api/qr?s=' + encodeURIComponent(currentSessionId) + '&data=' + encodeURIComponent(url))
+          .then(r => r.json())
+          .then(({ dataUrl }) => { if (dataUrl) { displayQrImg.src = dataUrl; } })
+          .catch(() => {});
+      }
+    }
+  }
+}
+
 function showRoomLinks() {
   createSection.classList.add('hidden');
   loginSection.classList.add('hidden');
   roomLinks.classList.remove('hidden');
+  saveSessionToStorage();
   // In auth mode there's only one room — offer logout, not a new room.
-  newRoomBtn.classList.toggle('hidden', authMode);
   logoutBtn.classList.toggle('hidden', !authMode);
   // Populate and reveal the request share link.
   const requestUrl = location.origin + '/request/?s=' + encodeURIComponent(currentSessionId);
   requestUrlInput.value = requestUrl;
+  if (openRequestLink) openRequestLink.href = requestUrl;
   requestLinkRow.classList.remove('hidden');
-  // Fetch and display the QR code.
+  // Set mode toggle to reflect current session mode.
+  if (reqModeToggle) reqModeToggle.dataset.mode = currentMode;
+  updateLinkLabel(currentMode);
+  // Fetch and cache the request QR code into the modal img.
   fetch('/api/qr?s=' + encodeURIComponent(currentSessionId) + '&data=' + encodeURIComponent(requestUrl))
     .then(r => r.json())
-    .then(({ dataUrl }) => {
-      if (dataUrl) {
-        requestQr.src = dataUrl;
-        requestQr.hidden = false;
-      }
-    })
+    .then(({ dataUrl }) => { if (dataUrl && requestQrImg) requestQrImg.src = dataUrl; })
     .catch(() => { /* QR is optional; silently skip on failure */ });
 }
 
@@ -156,8 +219,9 @@ createBtn.addEventListener('click', async () => {
   try {
     const res = await fetch('/api/session/create', { method: 'POST' });
     if (!res.ok) throw new Error('Server error');
-    const { sessionId } = await res.json();
+    const { sessionId, requestMode } = await res.json();
     currentSessionId = sessionId;
+    currentMode = requestMode || 'kiosk';
     if (isSafeRedirect(redirectTarget)) {
       doRedirect(sessionId, redirectTarget);
     } else {
@@ -172,12 +236,8 @@ createBtn.addEventListener('click', async () => {
 
 // ── New room / Logout ──────────────────────────────────────────────────────
 
-newRoomBtn.addEventListener('click', () => {
-  currentSessionId = null;
-  showCreate();
-});
-
 logoutBtn.addEventListener('click', () => {
+  clearSessionFromStorage();
   fetch('/api/logout', { method: 'POST' })
     .finally(() => {
       currentSessionId = null;
@@ -196,3 +256,45 @@ copyRequestBtn.addEventListener('click', () => {
     requestUrlInput.select();
   });
 });
+
+copyDisplayBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(displayUrlInput.value).then(() => {
+    const orig = copyDisplayBtn.textContent;
+    copyDisplayBtn.textContent = 'Copied ✓';
+    setTimeout(() => { copyDisplayBtn.textContent = orig; }, 2000);
+  }).catch(() => { displayUrlInput.select(); });
+});
+
+// ── Mode toggle ────────────────────────────────────────────────────────────
+if (reqModeToggle) {
+  reqModeToggle.addEventListener('click', async () => {
+    if (!currentSessionId) return;
+    const newMode = currentMode === 'crowd' ? 'kiosk' : 'crowd';
+    try {
+      const res = await fetch('/api/session/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: currentSessionId, mode: newMode }),
+      });
+      if (!res.ok) return;
+      currentMode = newMode;
+      saveSessionToStorage();
+      reqModeToggle.dataset.mode = newMode;
+      updateLinkLabel(newMode);
+    } catch { /* ignore */ }
+  });
+}
+
+// ── Display QR modal ───────────────────────────────────────────────────────
+function closeDisplayQrModal() { displayQrModal.classList.add('hidden'); }
+
+if (displayQrBtn)   displayQrBtn.addEventListener('click', () => displayQrModal.classList.remove('hidden'));
+if (displayQrClose) displayQrClose.addEventListener('click', closeDisplayQrModal);
+if (displayQrModal) displayQrModal.addEventListener('click', e => { if (e.target === displayQrModal) closeDisplayQrModal(); });
+
+// ── Request QR modal ───────────────────────────────────────────────────────
+function closeRequestQrModal() { requestQrModal.classList.add('hidden'); }
+
+if (requestQrBtn)   requestQrBtn.addEventListener('click', () => requestQrModal.classList.remove('hidden'));
+if (requestQrClose) requestQrClose.addEventListener('click', closeRequestQrModal);
+if (requestQrModal) requestQrModal.addEventListener('click', e => { if (e.target === requestQrModal) closeRequestQrModal(); });

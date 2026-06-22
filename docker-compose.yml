@@ -1,0 +1,40 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    # appendonly yes = AOF persistence — survives container restarts
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # The app service is in the "full" profile so it doesn't start by default.
+  # Local dev workflow:  docker compose up -d        (Redis only)
+  #                      npm start
+  #
+  # Full-stack workflow: docker compose --profile full up -d
+  app:
+    build: .
+    ports:
+      - "3444:3444"
+    environment:
+      # Override REDIS_URL so the container uses Docker's internal DNS,
+      # regardless of what's set in .env.
+      - REDIS_URL=redis://redis:6379
+      - PORT=3444
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [full]
+
+volumes:
+  redis-data:

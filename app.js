@@ -4,9 +4,9 @@ require('dotenv').config();
 const express = require('express');
 const helmet  = require('helmet');
 const { WebSocketServer } = require('ws');
-const http = require('http');
+const http  = require('http');
 const path  = require('path');
-const fs    = require('fs');
+const Redis = require('ioredis');
 const QRCode = require('qrcode');
 
 // ── Logger ──────────────────────────────────────────────────────────────
@@ -124,12 +124,9 @@ function retireKey(key) {
 }
 
 // ── Search result cache ───────────────────────────────────────────────────────────
-const SEARCH_CACHE_TTL_MS = (Number(process.env.SEARCH_CACHE_TTL_MIN) || 60) * 60_000;
-const searchCache = new Map(); // normalised query → { results, ts }
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of searchCache) if (now - v.ts > SEARCH_CACHE_TTL_MS) searchCache.delete(k);
-}, 10 * 60_000).unref();
+// Redis-backed so all instances share the same cache. TTL is set per-key;
+// no cleanup interval needed.
+const SEARCH_CACHE_TTL_SECS = (Number(process.env.SEARCH_CACHE_TTL_MIN) || 60) * 60;
 
 const app = express();
 app.set('trust proxy', 1); // trust X-Forwarded-* headers from reverse proxy
@@ -197,6 +194,7 @@ function authMiddleware(req, res, next) {
   // Root index and the audience request page are always accessible.
   if (p === '/' || p === '/index.html') return next();
   if (p === '/request/' || p === '/request/index.html') return next();
+  if (p === '/display/' || p === '/display/index.html') return next();
 
   // Only gate HTML entry points; CSS/JS assets load freely.
   if (!p.endsWith('/') && !p.endsWith('.html')) return next();
@@ -208,55 +206,108 @@ function authMiddleware(req, res, next) {
   res.redirect(302, '/?redirect=' + encodeURIComponent(req.originalUrl));
 }
 
+// ── Redis ─────────────────────────────────────────────────────────────────────
+// Two clients required: a command client and a dedicated subscriber connection.
+// A subscribed ioredis client cannot issue normal commands.
+const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const redis     = new Redis(REDIS_URL, { lazyConnect: true });
+const subRedis  = new Redis(REDIS_URL, { lazyConnect: true });
+
+redis.on('error',    err => logger.error('Redis error:',     err.message));
+subRedis.on('error', err => logger.error('Redis sub error:', err.message));
+
+// ── Redis key schema ──────────────────────────────────────────────────────────
+const K = {
+  session:  id => `kk:session:${id}`,
+  presence: id => `kk:presence:${id}`,
+  sessions: ()  => 'kk:sessions',
+  search:   q   => `kk:search:${q}`,
+  channel:  id => `kk:state:${id}`,
+};
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
-// Map<sessionId, { queue, nowPlaying, paused, nextId, clients: Set<ws>, lastActivity }>
+const SESSION_TTL_SECS = (Number(process.env.SESSION_TTL_HOURS) || 4) * 60 * 60;
 
-const sessions = new Map();
-const SESSION_TTL_MS = (Number(process.env.SESSION_TTL_HOURS) || 4) * 60 * 60 * 1000;
+function newSessionData() {
+  return {
+    queue:          [],
+    nowPlaying:     null,
+    paused:         false,
+    nextId:         1,
+    requests:       [],
+    nextRequestId:  1,
+    requestMode:    'kiosk',   // 'kiosk' | 'crowd'
+    blockedDevices: [],        // device tokens awaiting processing (crowd mode)
+    bannedDevices:  [],        // permanently banned device tokens for this session
+    lastActivity:   Date.now(),
+  };
+}
 
-function createSession() {
-  if (sessions.size >= MAX_SESSIONS) {
+async function getSession(id) {
+  if (!id) return null;
+  const raw = await redis.get(K.session(id));
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function saveSession(id, session) {
+  session.lastActivity = Date.now();
+  await redis.pipeline()
+    .set(K.session(id), JSON.stringify(session))
+    .expire(K.session(id),  SESSION_TTL_SECS)
+    .expire(K.presence(id), SESSION_TTL_SECS)
+    .exec();
+}
+
+async function createSession() {
+  const count = await redis.scard(K.sessions());
+  if (count >= MAX_SESSIONS) {
     logger.warn(`Session cap reached (${MAX_SESSIONS}) — rejecting new session`);
     return null;
   }
-  const id = randomBytes(20).toString('hex'); // 40-char hex, unguessable
-  sessions.set(id, {
-    queue: [],
-    nowPlaying: null,
-    paused: false,
-    nextId: 1,
-    requests: [],
-    nextRequestId: 1,
-    clients: new Set(),
-    lastActivity: Date.now(),
-  });
+  const id   = randomBytes(20).toString('hex');
+  const data = newSessionData();
+  await redis.pipeline()
+    .set(K.session(id), JSON.stringify(data))
+    .sadd(K.sessions(), id)
+    .hset(K.presence(id), 'player', 0, 'controller', 0, 'request', 0)
+    .expire(K.session(id),  SESSION_TTL_SECS)
+    .expire(K.presence(id), SESSION_TTL_SECS)
+    .exec();
   logger.info(`Session created: ${sid(id)}`);
   return id;
 }
 
-function getSession(id) {
-  return sessions.get(id) || null;
+async function touchSession(sessionId) {
+  await redis.pipeline()
+    .expire(K.session(sessionId),  SESSION_TTL_SECS)
+    .expire(K.presence(sessionId), SESSION_TTL_SECS)
+    .exec();
 }
 
-function touchSession(session) {
-  session.lastActivity = Date.now();
+async function markPresence(sessionId, role, delta) {
+  await redis.hincrby(K.presence(sessionId), role, delta);
+  await redis.expire(K.presence(sessionId), SESSION_TTL_SECS);
 }
 
-// Periodic cleanup: remove sessions idle longer than SESSION_TTL_MS with no active connections
-setInterval(() => {
-  const now = Date.now();
-  let expired = 0;
-  for (const [id, session] of sessions) {
-    if (session.clients.size === 0 && now - session.lastActivity > SESSION_TTL_MS) {
-      sessions.delete(id);
-      expired++;
-      logger.debug(`Session expired: ${sid(id)}`);
+// Periodic cleanup: scan the session index and prune entries whose Redis key
+// has already expired. Redis TTL handles actual expiry; this keeps the
+// kk:sessions Set accurate for the MAX_SESSIONS cap check.
+setInterval(async () => {
+  try {
+    const ids = await redis.smembers(K.sessions());
+    if (!ids.length) return;
+    const pipeline = redis.pipeline();
+    for (const id of ids) pipeline.exists(K.session(id));
+    const results = await pipeline.exec();
+    const expired = ids.filter((_, i) => results[i][1] === 0);
+    if (expired.length) {
+      await redis.srem(K.sessions(), ...expired);
+      logger.debug(`Session index: pruned ${expired.length} expired entries`);
     }
+  } catch (e) {
+    logger.error('Session index cleanup error:', e.message);
   }
-  if (expired > 0 || logLevelNum >= LOG_LEVELS.debug) {
-    logger.debug(`Session cleanup: removed ${expired}, active ${sessions.size}`);
-  }
-}, 30 * 60 * 1000);
+}, 30 * 60_000).unref();
 
 app.use(helmet({
   // YouTube iframes don't send CORP headers, so COEP: require-corp would
@@ -284,38 +335,89 @@ app.use(authMiddleware);
 app.use(express.json({ limit: '4kb' }));
 app.use(express.static(path.join(__dirname, 'web')));
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Local client registry + pub/sub dispatch ───────────────────────────────────────
+// localClients tracks sockets connected to THIS instance only. The pub/sub
+// subscriber (wired in start()) forwards published messages to the relevant
+// local sockets, achieving cross-instance broadcast.
+const localClients = new Map(); // sessionId → Set<WebSocket>
 
-function broadcast(session, data) {
-  const msg = JSON.stringify(data);
-  for (const client of session.clients) {
-    if (client.readyState === 1) client.send(msg);
-  }
+function addLocalClient(sessionId, ws) {
+  if (!localClients.has(sessionId)) localClients.set(sessionId, new Set());
+  localClients.get(sessionId).add(ws);
 }
 
-function hasPlayer(session) {
-  for (const client of session.clients) {
-    if (client.role === 'player' && client.readyState === 1) return true;
-  }
-  return false;
+function removeLocalClient(sessionId, ws) {
+  const set = localClients.get(sessionId);
+  if (!set) return;
+  set.delete(ws);
+  if (set.size === 0) localClients.delete(sessionId);
 }
 
-function hasController(session) {
-  for (const client of session.clients) {
-    if (client.role === 'controller' && client.readyState === 1) return true;
-  }
-  return false;
+// ── Per-session message serialization ────────────────────────────────────────
+// The ws message handler is async, so two messages arriving close together
+// (e.g. the add + dismiss-request pair the grant flow sends in the same tick)
+// would both start before either finishes, causing a last-write-wins race.
+// We serialise processing per session by chaining each handler onto the tail
+// of the previous one. Map entries are garbage-collected when idle.
+const sessionLocks = new Map(); // sessionId → Promise (tail of the chain)
+
+function withSessionLock(sessionId, fn) {
+  const previous = sessionLocks.get(sessionId) ?? Promise.resolve();
+  const next = previous.then(fn).catch(err =>
+    logger.error(`WS handler error session=${sid(sessionId)}:`, err.message)
+  );
+  // Replace with a tail that cleans itself up so the Map doesn't grow forever.
+  sessionLocks.set(sessionId, next.then(() => {
+    if (sessionLocks.get(sessionId) === next) sessionLocks.delete(sessionId);
+  }));
 }
 
-function broadcastState(session) {
-  broadcast(session, {
-    type: 'state',
-    queue: session.queue,
-    nowPlaying: session.nowPlaying,
-    paused: session.paused,
-    playerConnected: hasPlayer(session),
-    controllerConnected: hasController(session),
-    requests: session.requests,
+// ── Role slot enforcement (distributed, Redis NX lease) ───────────────────────
+// Only one controller and one player may be connected per session at a time,
+// across all instances. A SET NX key with a TTL acts as a distributed lease.
+// The holder refreshes the TTL on a heartbeat; if an instance crashes the slot
+// auto-expires after SLOT_TTL_SECS and the next connection can claim it.
+const SLOT_TTL_SECS     = 30;
+const SLOT_HEARTBEAT_MS = 15_000;
+
+const slotKey = (sessionId, role) => `kk:slot:${sessionId}:${role}`;
+
+async function claimSlot(sessionId, role, connId) {
+  const result = await redis.set(slotKey(sessionId, role), connId, 'NX', 'EX', SLOT_TTL_SECS);
+  return result === 'OK';
+}
+
+async function releaseSlot(sessionId, role) {
+  await redis.del(slotKey(sessionId, role));
+}
+
+async function refreshSlot(sessionId, role) {
+  await redis.expire(slotKey(sessionId, role), SLOT_TTL_SECS);
+}
+
+async function publishRaw(sessionId, data) {
+  await redis.publish(K.channel(sessionId), JSON.stringify(data));
+}
+
+async function broadcastState(sessionId) {
+  const [session, presenceArr] = await Promise.all([
+    getSession(sessionId),
+    redis.hmget(K.presence(sessionId), 'player', 'controller', 'request'),
+  ]);
+  if (!session) return;
+  await publishRaw(sessionId, {
+    type:               'state',
+    queue:               session.queue,
+    nowPlaying:          session.nowPlaying,
+    paused:              session.paused,
+    playerConnected:     Number(presenceArr[0]) > 0,
+    controllerConnected: Number(presenceArr[1]) > 0,
+    requesterCount:      Math.max(0, Number(presenceArr[2])),
+    // Strip deviceToken from requests — it is stored server-side only.
+    requests:            session.requests.map(({ deviceToken: _dt, ...r }) => r),
+    requestMode:         session.requestMode,
+    blockedCount:        (session.blockedDevices || []).length,
+    bannedCount:         (session.bannedDevices  || []).length,
   });
 }
 
@@ -370,10 +472,11 @@ function decodeEntities(str) {
     .replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'");
 }
 
-function playNext(session) {
-  session.paused = false;
+async function playNext(sessionId, session) {
+  session.paused     = false;
   session.nowPlaying = session.queue.length > 0 ? session.queue.shift() : null;
-  broadcastState(session);
+  await saveSession(sessionId, session);
+  await broadcastState(sessionId);
 }
 
 // ── REST – auth ───────────────────────────────────────────────────────────────
@@ -407,34 +510,65 @@ app.post('/api/logout', (req, res) => {
 
 // ── REST – session ────────────────────────────────────────────────────────────
 
-app.post('/api/session/create', createSessionLimiter, (req, res) => {
+app.post('/api/session/create', createSessionLimiter, async (req, res) => {
   let id;
+  let requestMode = 'kiosk';
   if (AUTH_HASH) {
     // Auth mode: one fixed session for the whole server, keyed to the token hash.
     id = AUTH_HASH;
-    if (!getSession(id)) {
-      if (sessions.size >= MAX_SESSIONS) {
+    const existing = await getSession(id);
+    if (!existing) {
+      const count = await redis.scard(K.sessions());
+      if (count >= MAX_SESSIONS) {
         return res.status(503).json({ error: 'Server is at capacity — try again later' });
       }
-      sessions.set(id, {
-        queue: [],
-        nowPlaying: null,
-        paused: false,
-        nextId: 1,
-        requests: [],
-        nextRequestId: 1,
-        clients: new Set(),
-        lastActivity: Date.now(),
-      });
+      await redis.pipeline()
+        .set(K.session(id), JSON.stringify(newSessionData()))
+        .sadd(K.sessions(), id)
+        .hset(K.presence(id), 'player', 0, 'controller', 0, 'request', 0)
+        .expire(K.session(id),  SESSION_TTL_SECS)
+        .expire(K.presence(id), SESSION_TTL_SECS)
+        .exec();
       logger.info(`Session created (auth mode): ${sid(id)}`);
     } else {
+      requestMode = existing.requestMode || 'kiosk';
       logger.debug(`Session resumed (auth mode): ${sid(id)}`);
     }
   } else {
-    id = createSession();
+    id = await createSession();
     if (!id) return res.status(503).json({ error: 'Server is at capacity — try again later' });
   }
-  res.json({ sessionId: id });
+  res.json({ sessionId: id, requestMode });
+});
+
+// Check whether a session still exists (used by the ingress page to restore state after refresh).
+app.get('/api/session', async (req, res) => {
+  const { s } = req.query;
+  if (!s || typeof s !== 'string' || s.length > 128) {
+    return res.status(400).json({ error: 'Invalid session id' });
+  }
+  const session = await getSession(s);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  res.json({ sessionId: s, requestMode: session.requestMode || 'kiosk' });
+});
+
+// Update request mode for a session (called from the ingress page).
+app.post('/api/session/mode', async (req, res) => {
+  if (AUTH_HASH && getCookie(req, 'kp_auth') !== AUTH_HASH) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { sessionId, mode } = req.body || {};
+  if (mode !== 'kiosk' && mode !== 'crowd') {
+    return res.status(400).json({ error: 'Invalid mode' });
+  }
+  const session = await getSession(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.requestMode !== mode) {
+    session.requestMode = mode;
+    await saveSession(sessionId, session);
+    await broadcastState(sessionId);
+  }
+  res.json({ ok: true });
 });
 
 // ── REST – title lookup ───────────────────────────────────────────────────────
@@ -493,10 +627,10 @@ app.get('/api/search', searchLimiter, async (req, res) => {
   if (!q) return res.json({ results: [] });
 
   // Serve from cache when available.
-  const cached = searchCache.get(q);
-  if (cached && Date.now() - cached.ts <= SEARCH_CACHE_TTL_MS) {
+  const cachedRaw = await redis.get(K.search(q));
+  if (cachedRaw) {
     logger.debug(`Search cache hit  q="${q}"`);
-    return res.json({ results: cached.results });
+    return res.json({ results: JSON.parse(cachedRaw) });
   }
 
   const apiKey = getNextKey();
@@ -545,7 +679,7 @@ app.get('/api/search', searchLimiter, async (req, res) => {
         url:     'https://www.youtube.com/watch?v=' + i.id.videoId,
       }));
 
-    searchCache.set(q, { results, ts: Date.now() });
+    await redis.set(K.search(q), JSON.stringify(results), 'EX', SEARCH_CACHE_TTL_SECS);
     logger.debug(`Search complete  q="${q}"  results=${results.length}  cached=true`);
 
     res.json({ results });
@@ -558,7 +692,7 @@ app.get('/api/search', searchLimiter, async (req, res) => {
 // QR code for any URL (used by the index page to generate the request-link QR).
 app.get('/api/qr', qrLimiter, async (req, res) => {
   const sessionId = req.query.s;
-  if (!sessionId || !getSession(sessionId)) {
+  if (!sessionId || !(await getSession(sessionId))) {
     return res.status(403).json({ error: 'Invalid session' });
   }
   const data = req.query.data;
@@ -583,7 +717,7 @@ app.get('/api/qr', qrLimiter, async (req, res) => {
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   const wsUrl = new URL(req.url, 'http://localhost');
   const role = wsUrl.searchParams.get('role') || 'unknown';
   const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
@@ -597,37 +731,125 @@ wss.on('connection', (ws, req) => {
   }
 
   const sessionId = wsUrl.searchParams.get('s');
-  const session = sessionId ? getSession(sessionId) : null;
-  if (!session) {
+  const initSession = sessionId ? await getSession(sessionId) : null;
+  if (!initSession) {
     logger.warn(`WS unknown session  role=${role} sid=${sid(sessionId)} ip=${ip}`);
     ws.close(4004, 'Session not found');
     return;
   }
 
   ws.role = role;
+
+  // Enforce single controller / single player per session across all instances.
+  // In kiosk mode, also enforce a single request page.
+  let slotHeartbeat = null;
+  ws._hasRequestSlot = false;
+  if (role === 'controller' || role === 'player') {
+    const connId  = randomBytes(8).toString('hex');
+    const claimed = await claimSlot(sessionId, role, connId);
+    if (!claimed) {
+      logger.warn(`WS slot occupied  role=${role} session=${sid(sessionId)} ip=${ip}`);
+      ws.close(4409, 'Role already connected');
+      return;
+    }
+    slotHeartbeat = setInterval(
+      () => refreshSlot(sessionId, role).catch(() => {}),
+      SLOT_HEARTBEAT_MS
+    );
+  } else if (role === 'request' && initSession.requestMode === 'kiosk') {
+    const connId  = randomBytes(8).toString('hex');
+    const claimed = await claimSlot(sessionId, 'request', connId);
+    if (!claimed) {
+      logger.warn(`WS kiosk slot occupied  session=${sid(sessionId)} ip=${ip}`);
+      ws.close(4409, 'Kiosk already connected');
+      return;
+    }
+    ws._hasRequestSlot = true;
+    slotHeartbeat = setInterval(
+      () => refreshSlot(sessionId, 'request').catch(() => {}),
+      SLOT_HEARTBEAT_MS
+    );
+  }
+
   logger.info(`WS connect    role=${role.padEnd(10)} session=${sid(sessionId)} ip=${ip}`);
 
-  touchSession(session);
-  session.clients.add(ws);
+  addLocalClient(sessionId, ws);
+  await touchSession(sessionId);
+  await markPresence(sessionId, role, 1);
+  // Broadcast full state to all clients (including the new one) so controllers
+  // immediately learn about updated playerConnected / controllerConnected status.
+  await broadcastState(sessionId);
 
-  // Broadcast to all clients (including the new one) so controllers immediately
-  // learn about the updated playerConnected status.
-  broadcastState(session);
-
-  ws.on('close', (code) => {
-    session.clients.delete(ws);
+  ws.on('close', async (code) => {
+    if (slotHeartbeat) clearInterval(slotHeartbeat);
+    if (role === 'controller' || role === 'player') await releaseSlot(sessionId, role);
+    if (ws._hasRequestSlot) await releaseSlot(sessionId, 'request');
+    removeLocalClient(sessionId, ws);
+    await markPresence(sessionId, role, -1);
     logger.info(`WS disconnect role=${role.padEnd(10)} session=${sid(sessionId)} code=${code}`);
-    // Let peers know when player or controller presence changes.
-    if (ws.role === 'player' || ws.role === 'controller') broadcastState(session);
+    if (ws.role === 'player' || ws.role === 'controller' || ws.role === 'request') await broadcastState(sessionId);
   });
 
-  ws.on('message', raw => {
-    let msg;
-    try { msg = JSON.parse(raw); } catch { return; }
-    touchSession(session);
-    logger.debug(`WS msg        type=${String(msg.type).padEnd(14)} session=${sid(sessionId)}`);
+  ws.on('message', (raw) => {
+    withSessionLock(sessionId, async () => {
+      let msg;
+      try { msg = JSON.parse(raw); } catch { return; }
+      logger.debug(`WS msg        type=${String(msg.type).padEnd(14)} session=${sid(sessionId)}`);
+
+      // Re-read session fresh from Redis on every message so this instance sees
+      // changes made by other instances.
+      const session = await getSession(sessionId);
+      if (!session) return; // session expired while client was connected
 
     switch (msg.type) {
+      case 'hello': {
+        // Sent by request pages on connect. Responds with the device's current
+        // blocked status so the page can show the right UI immediately.
+        if (role !== 'request') break;
+        const hToken = typeof msg.deviceToken === 'string' ? msg.deviceToken.slice(0, 80) : null;
+        if (!hToken) break;
+        const isBanned  = (session.bannedDevices  || []).includes(hToken);
+        const isBlocked = !isBanned && session.requestMode === 'crowd' &&
+          (session.blockedDevices || []).includes(hToken);
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({
+            type:    'device-status',
+            mode:    session.requestMode,
+            blocked: isBlocked,
+            banned:  isBanned,
+          }));
+        }
+        break;
+      }
+
+      case 'clear-blocked-devices': {
+        // Controller only. Unblocks every device waiting in crowd mode at once.
+        if (role !== 'controller') break;
+        const cleared = session.blockedDevices || [];
+        if (!cleared.length) break;
+        session.blockedDevices = [];
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        for (const token of cleared) {
+          await publishRaw(sessionId, { type: 'device-cleared', token });
+        }
+        logger.info(`Blocked devices cleared: ${cleared.length}  session=${sid(sessionId)}`);
+        break;
+      }
+
+      case 'set-request-mode': {
+        // Controller only. Switches the session between kiosk and crowd mode.
+        if (role !== 'controller') break;
+        const newMode = msg.mode === 'crowd' ? 'crowd' : 'kiosk';
+        if (session.requestMode === newMode) break;
+        session.requestMode = newMode;
+        // Clear all blocks when returning to kiosk so devices aren't stuck.
+        if (newMode === 'kiosk') session.blockedDevices = [];
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
       case 'add': {
         const videoId = extractVideoId(msg.url);
         if (!videoId) return;
@@ -639,8 +861,12 @@ wss.on('connection', (ws, req) => {
           singer: sanitiseTitle(msg.singer || ''),
         };
         session.queue.push(item);
-        if (!session.nowPlaying) playNext(session);
-        else broadcastState(session);
+        if (!session.nowPlaying) {
+          await playNext(sessionId, session);
+        } else {
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
+        }
         break;
       }
 
@@ -649,36 +875,39 @@ wss.on('connection', (ws, req) => {
         if (Number.isInteger(idx) && idx >= 0 && idx < session.queue.length) {
           session.paused = false;
           session.nowPlaying = session.queue.splice(idx, 1)[0];
-          broadcastState(session);
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
         }
         break;
       }
 
       case 'next':
-        playNext(session);
+        await playNext(sessionId, session);
         break;
 
       case 'remove': {
         const idx = Number(msg.index);
         if (Number.isInteger(idx) && idx >= 0 && idx < session.queue.length) {
           session.queue.splice(idx, 1);
-          broadcastState(session);
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
         }
         break;
       }
 
       case 'reorder': {
         const from = Number(msg.from);
-        const to = Number(msg.to);
+        const to   = Number(msg.to);
         if (
           Number.isInteger(from) && Number.isInteger(to) &&
           from >= 0 && from < session.queue.length &&
-          to >= 0 && to < session.queue.length &&
+          to   >= 0 && to   < session.queue.length &&
           from !== to
         ) {
           const [item] = session.queue.splice(from, 1);
           session.queue.splice(to, 0, item);
-          broadcastState(session);
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
         }
         break;
       }
@@ -686,28 +915,42 @@ wss.on('connection', (ws, req) => {
       case 'restart':
         if (session.nowPlaying) {
           session.paused = false;
-          broadcast(session, { type: 'restart' });
+          await saveSession(sessionId, session);
+          // restart is a transient command — publish directly rather than a full state.
+          await publishRaw(sessionId, { type: 'restart' });
         }
         break;
 
       case 'video-ended':
-        playNext(session);
+        await playNext(sessionId, session);
         break;
 
       case 'pause':
-        if (session.nowPlaying) { session.paused = true; broadcastState(session); }
+        if (session.nowPlaying) {
+          session.paused = true;
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
+        }
         break;
 
       case 'resume':
-        if (session.nowPlaying) { session.paused = false; broadcastState(session); }
+        if (session.nowPlaying) {
+          session.paused = false;
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
+        }
         break;
 
       case 'video-error':
-        if (session.nowPlaying) { session.nowPlaying.embedFailed = true; broadcastState(session); }
+        if (session.nowPlaying) {
+          session.nowPlaying.embedFailed = true;
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
+        }
         break;
 
       case 'request': {
-        // Per-client flood guard: max 10 requests per minute per WebSocket connection.
+        // Per-client flood guard.
         const _now = Date.now();
         if (!ws._reqWindowStart || _now - ws._reqWindowStart > WS_REQ_RATE_WINDOW_MS) {
           ws._reqWindowStart = _now;
@@ -718,107 +961,137 @@ wss.on('connection', (ws, req) => {
           ws.close(4029, 'Rate limited');
           return;
         }
-        // Per-session inbox cap: silently ignore once the inbox is full.
         if (session.requests.length >= MAX_SESSION_REQUESTS) return;
         const title  = sanitiseTitle(msg.title  || '').slice(0, 120);
         if (!title) return;
         const name   = sanitiseTitle(msg.name   || '').slice(0, 120);
         const artist = sanitiseTitle(msg.artist || '').slice(0, 120);
-        session.requests.push({ id: session.nextRequestId++, name, artist, title });
-        broadcastState(session);
+
+        // Gate: banned devices cannot submit in any mode.
+        const dToken = typeof msg.deviceToken === 'string' ? msg.deviceToken.slice(0, 80) : null;
+        if (dToken && (session.bannedDevices || []).includes(dToken)) {
+          if (ws.readyState === 1)
+            ws.send(JSON.stringify({ type: 'device-banned', token: dToken }));
+          return;
+        }
+
+        if (session.requestMode === 'crowd') {
+          // Crowd mode: one pending request per device token.
+          if (!dToken) return; // crowd mode requires a device token
+          if ((session.blockedDevices || []).includes(dToken)) {
+            // Re-assert blocked state in case client lost track.
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'device-status', mode: 'crowd', blocked: true }));
+            }
+            return;
+          }
+          session.requests.push({ id: session.nextRequestId++, name, artist, title, deviceToken: dToken });
+          if (!session.blockedDevices) session.blockedDevices = [];
+          session.blockedDevices.push(dToken);
+        } else {
+          // Kiosk mode: no per-device tracking.
+          session.requests.push({ id: session.nextRequestId++, name, artist, title });
+        }
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
         break;
       }
 
       case 'dismiss-request': {
         const idx = session.requests.findIndex(r => r.id === msg.id);
         if (idx !== -1) {
-          session.requests.splice(idx, 1);
-          broadcastState(session);
+          const [dismissed] = session.requests.splice(idx, 1);
+          // Auto-unblock the device that submitted this request (crowd mode).
+          if (dismissed.deviceToken) {
+            if (!session.blockedDevices) session.blockedDevices = [];
+            const di = session.blockedDevices.indexOf(dismissed.deviceToken);
+            if (di !== -1) session.blockedDevices.splice(di, 1);
+          }
+          await saveSession(sessionId, session);
+          await broadcastState(sessionId);
+          // Tell the device's request page it can submit again.
+          if (dismissed.deviceToken) {
+            await publishRaw(sessionId, { type: 'device-cleared', token: dismissed.deviceToken });
+          }
         }
         break;
       }
+
+      case 'ban-device': {
+        // Controller only. Ban a device by its request ID — removes the request
+        // and permanently blocks the device token for this session.
+        if (role !== 'controller') break;
+        const bidx = session.requests.findIndex(r => r.id === msg.id);
+        if (bidx === -1) break;
+        const [banned] = session.requests.splice(bidx, 1);
+        if (banned.deviceToken) {
+          if (!session.bannedDevices) session.bannedDevices = [];
+          if (!session.bannedDevices.includes(banned.deviceToken))
+            session.bannedDevices.push(banned.deviceToken);
+          // Also remove from crowd blocked list.
+          if (session.blockedDevices) {
+            const bi = session.blockedDevices.indexOf(banned.deviceToken);
+            if (bi !== -1) session.blockedDevices.splice(bi, 1);
+          }
+        }
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        if (banned.deviceToken) {
+          await publishRaw(sessionId, { type: 'device-banned', token: banned.deviceToken });
+        }
+        logger.info(`Device banned: session=${sid(sessionId)}`);
+        break;
+      }
     }
+    }); // end withSessionLock
   });
 });
 
-// ── Session persistence ───────────────────────────────────────────────────────────
-// Queue, now-playing, and requests survive a server restart.
-// The clients Set (live WebSocket objects) is not serialisable and is omitted.
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
 
-const SESSION_FILE = path.join(__dirname, 'data', 'sessions.json');
-
-async function saveSessionsToDisk() {
-  const payload = [];
-  for (const [id, s] of sessions) {
-    payload.push({
-      id,
-      queue:         s.queue,
-      nowPlaying:    s.nowPlaying,
-      paused:        s.paused,
-      nextId:        s.nextId,
-      requests:      s.requests,
-      nextRequestId: s.nextRequestId,
-      lastActivity:  s.lastActivity,
-    });
-  }
-  try {
-    await fs.promises.mkdir(path.dirname(SESSION_FILE), { recursive: true });
-    const tmp = SESSION_FILE + '.tmp';
-    await fs.promises.writeFile(tmp, JSON.stringify(payload));
-    await fs.promises.rename(tmp, SESSION_FILE); // atomic on most OSes
-    logger.debug(`Sessions saved: ${payload.length}`);
-  } catch (e) {
-    logger.error('Failed to save sessions:', e.message);
-  }
-}
-
-async function loadSessionsFromDisk() {
-  try {
-    const raw  = await fs.promises.readFile(SESSION_FILE, 'utf8');
-    const list = JSON.parse(raw);
-    const now  = Date.now();
-    let loaded = 0;
-    for (const s of (Array.isArray(list) ? list : [])) {
-      if (!s.id || now - s.lastActivity > SESSION_TTL_MS) continue;
-      sessions.set(s.id, {
-        queue:         Array.isArray(s.queue)    ? s.queue    : [],
-        nowPlaying:    s.nowPlaying              || null,
-        paused:        !!s.paused,
-        nextId:        s.nextId                  || 1,
-        requests:      Array.isArray(s.requests) ? s.requests : [],
-        nextRequestId: s.nextRequestId           || 1,
-        clients:       new Set(),
-        lastActivity:  s.lastActivity,
-      });
-      loaded++;
-    }
-    if (loaded > 0) logger.info(`Sessions loaded from disk: ${loaded}`);
-  } catch (e) {
-    if (e.code !== 'ENOENT') logger.warn('Could not load sessions from disk:', e.message);
-    // ENOENT on first run is expected — no sessions to restore.
-  }
-}
-
-// Auto-save every 60 seconds.
-setInterval(saveSessionsToDisk, 60_000).unref();
-
-// Save on graceful shutdown so in-flight sessions aren't lost.
 function shutdown(signal) {
-  logger.info(`${signal} received — saving sessions and exiting…`);
-  saveSessionsToDisk().finally(() => process.exit(0));
+  logger.info(`${signal} received — shutting down…`);
+  server.close(() => {
+    redis.disconnect();
+    subRedis.disconnect();
+    process.exit(0);
+  });
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
 
-// ── Start ─────────────────────────────────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3444;
-loadSessionsFromDisk().then(() => {
+
+async function start() {
+  await redis.connect();
+  await subRedis.connect();
+
+  // Pattern-subscribe to all session state channels.
+  // Any message published by any instance is forwarded to locally-connected
+  // sockets for that session — this is the cross-instance broadcast mechanism.
+  await subRedis.psubscribe('kk:state:*');
+  subRedis.on('pmessage', (_pattern, channel, message) => {
+    const sessionId = channel.slice('kk:state:'.length);
+    const localSet  = localClients.get(sessionId);
+    if (!localSet) return;
+    for (const ws of localSet) {
+      if (ws.readyState === 1) ws.send(message);
+    }
+  });
+
   server.listen(PORT, () => {
     logger.info(`Karaoke Browser listening on port ${PORT}`);
-    logger.info(`  Open: http://localhost:${PORT}/`);
-    logger.info(`  Auth: ${AUTH_HASH ? 'enabled' : 'disabled'}`);
-    logger.info(`  Keys: ${YT_KEYS.length} YouTube API key(s) configured`);
+    logger.info(`  Open:  http://localhost:${PORT}/`);
+    logger.info(`  Auth:  ${AUTH_HASH ? 'enabled' : 'disabled'}`);
+    logger.info(`  Keys:  ${YT_KEYS.length} YouTube API key(s) configured`);
+    logger.info(`  Redis: ${REDIS_URL}`);
     logger.info(`  Log level: ${process.env.LOG_LEVEL || 'info'}`);
   });
+}
+
+start().catch(err => {
+  logger.error('Startup failed:', err.message);
+  process.exit(1);
 });

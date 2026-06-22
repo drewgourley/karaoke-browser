@@ -270,7 +270,7 @@ document.getElementById('gate-open-controller').addEventListener('click', e => {
 
   document.addEventListener('fullscreenchange', () => {
     const fs = !!document.fullscreenElement;
-    btn.textContent = fs ? '⊡' : '⛶';
+    btn.textContent = fs ? '✕' : '⛶';
     btn.title = fs ? 'Exit fullscreen' : 'Enter fullscreen';
   });
 }());

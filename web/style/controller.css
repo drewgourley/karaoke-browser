@@ -414,6 +414,75 @@ a.btn:hover { filter: brightness(1.2); }
   cursor: default;
 }
 
+.ghost.req-ban-btn:hover  { color: #ef476f; filter: none; }
+
+/* ── Request mode toggle (pill slide-switch) ────────────────────────────── */
+.mode-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  flex-shrink: 0;
+}
+.mode-toggle:hover  { border-color: var(--accent); filter: none; }
+.mode-toggle:active { filter: none; }
+
+.mode-option {
+  position: relative;
+  z-index: 1;
+  padding: 0.22rem 0.6rem;
+  min-width: 3.6rem;
+  text-align: center;
+  color: var(--muted);
+  transition: color 0.2s ease;
+  pointer-events: none;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
+
+/* Active side gets dark text — the pill underneath provides the bg. */
+.mode-toggle[data-mode="kiosk"] .mode-option:first-child,
+.mode-toggle[data-mode="crowd"]  .mode-option:last-child  { color: #0f0f1a; }
+
+/* Sliding accent pill */
+.mode-toggle::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  width: 50%;
+  border-radius: 14px;
+  background: var(--accent);
+  transition: transform 0.2s ease;
+  transform: translateX(0);
+}
+.mode-toggle[data-mode="crowd"]::before { transform: translateX(100%); }
+
+/* Clear-blocked button — amber ghost */
+.btn-clear-blocked {
+  background: transparent;
+  border: 1px solid rgba(255,209,102,0.35);
+  color: #ffd166;
+  border-radius: 6px;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.btn-clear-blocked:hover  { background: rgba(255,209,102,0.1); border-color: #ffd166; filter: none; }
+.btn-clear-blocked:active { filter: none; }
+
 /* ── Singer modal ───────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;
@@ -438,3 +507,54 @@ a.btn:hover { filter: brightness(1.2); }
 .modal-song    { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .modal-heading { font-size: 1.1rem; font-weight: 700; }
 .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.25rem; }
+
+/* ── Request-link modal content ───────────────────────────────────────────── */
+.req-link-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0;
+}
+.req-link-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+.req-link-url {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--surface2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 0.45rem 0.75rem !important;
+  color: var(--muted) !important;
+  font-size: 0.78rem !important;
+  font-family: 'Courier New', monospace !important;
+  cursor: text;
+  user-select: all;
+}
+.btn-copy-link {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s;
+}
+.btn-copy-link:hover { color: var(--text); border-color: var(--accent); filter: none; }
+#req-link-open { text-decoration: none; flex-shrink: 0; }
+.req-link-qr {
+  display: block;
+  width: 160px;
+  height: 160px;
+  margin: 0.5rem auto 0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+  box-sizing: border-box;
+  image-rendering: pixelated;
+}

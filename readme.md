@@ -50,6 +50,7 @@ Session IDs are 40-character random hex strings. The request page uses the sessi
 ## Prerequisites
 
 - **Node.js 18+**
+- **Redis 6+** — required for session state, pub/sub broadcast, and search cache
 - A **YouTube Data API v3 key** (free) for song search. URL-paste and the full queue work without one.
 
 ### Getting YouTube API keys
@@ -71,7 +72,7 @@ git clone <repo-url>
 cd karaoke-browser
 npm install
 cp .env.example .env
-# open .env and add your YOUTUBE_API_KEYS
+# open .env and add your YOUTUBE_API_KEYS (and REDIS_URL if Redis isn't on localhost:6379)
 npm start
 ```
 
@@ -96,6 +97,7 @@ Copy `.env.example` to `.env` and edit as needed.
 |---|---|---|
 | `PORT` | `3444` | HTTP port the server listens on. |
 | `LOG_LEVEL` | `info` | Log verbosity: `error` / `warn` / `info` / `debug`. |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Redis connection URL. Required for multi-instance deployments. |
 
 ### Auth
 
@@ -194,8 +196,9 @@ pm2 startup   # auto-start on reboot
 - Sessions are created on demand from the index page.
 - In **auth mode** there is one fixed session for the life of the server (keyed to the token hash). Restarting the server with the same `AUTH_TOKEN` resumes the same session.
 - In **no-auth mode** each "Start Karaoke Night" click creates a fresh session with a new random ID.
-- Sessions idle for longer than `SESSION_TTL_HOURS` (default: 4 h) with no active WebSocket connections are cleaned up automatically.
-- Queue, now-playing, and song requests all persist in memory for the life of the session. Sessions are saved to disk every 60 seconds and restored on restart, so a server restart no longer wipes active sessions.
+- Sessions are stored in Redis with a TTL of `SESSION_TTL_HOURS` (default: 4 h). Idle sessions with no active WebSocket connections expire automatically when the TTL elapses.
+- Queue, now-playing, and song requests all persist in Redis for the life of the session. A server restart does not wipe active sessions — Redis holds the state.
+- Multiple server instances share the same session state. WebSocket state changes are broadcast to all instances via Redis pub/sub.
 
 ---
 
@@ -213,6 +216,8 @@ The following protections are built in and all tunable via `.env`:
 | `/api/title` rate limit | 30 per IP / min | `TITLE_RATE_MAX`, `TITLE_RATE_WINDOW_MIN` |
 | `/api/qr` rate limit | 20 per IP / min | `QR_RATE_MAX`, `QR_RATE_WINDOW_MIN` |
 | YouTube key rotation | Round-robin; auto-retire on 403 until midnight UTC | `YOUTUBE_API_KEYS` |
+| Search result cache | Redis-backed, shared across all instances | `SEARCH_CACHE_TTL_MIN` |
+| WS connection rate limit | 60 upgrades/IP/min (pre-handshake) | `WS_CONN_RATE_MAX`, `WS_CONN_RATE_WINDOW_MIN` |
 | Search result cache | 60-minute TTL; cached hits cost zero API quota | `SEARCH_CACHE_TTL_MIN` |
 | Session persistence | Save every 60 s + on SIGTERM/SIGINT; restore on restart | — |
 

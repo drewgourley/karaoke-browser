@@ -12,10 +12,16 @@
 <header>
   <h1>🎤 Karaoke Controller</h1>
   <div class="header-right">
+    <button class="ghost" id="req-link-btn" title="Get the crowd QR display link" hidden>📺 Crowd QR Display</button>
+    <button class="ghost" id="kiosk-link-btn" title="Get the kiosk / request link">🏠 Kiosk Link</button>
     <button class="ghost" id="open-player-btn" title="Open the player in a new tab">🎬 Open Player</button>
     <div class="status" id="player-up-badge" hidden>
       <div class="dot on"></div>
-      <span>Player Up</span>
+      <span>Player</span>
+    </div>
+    <div class="status" id="requester-badge" hidden>
+      <div class="dot on"></div>
+      <span id="requester-badge-text">KIOSK CONNECTED</span>
     </div>
     <div class="status">
       <div class="dot" id="dot"></div>
@@ -98,6 +104,14 @@
       <div class="queue-header">
         <div class="card-label" style="margin-bottom:0">
           Requests <span class="badge" id="req-count">0</span>
+          <span id="req-banned-badge" class="badge" style="background:rgba(239,71,111,0.15);color:#ef476f;margin-left:0.3rem" hidden>🔨 <span id="req-banned-count">0</span> banned</span>
+        </div>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          <button id="req-clear-blocked-btn" class="btn-clear-blocked" title="Unblock all waiting crowd devices" hidden>↺ Unblock all</button>
+          <button id="req-mode-btn" class="mode-toggle" data-mode="kiosk" title="Kiosk: unlimited requests per device&#10;Crowd: one request per device until processed">
+            <span class="mode-option">🏠 Kiosk</span>
+            <span class="mode-option">📱 Crowd</span>
+          </button>
         </div>
       </div>
       <ul class="queue" id="request-list">
@@ -117,6 +131,42 @@
     <div class="modal-actions">
       <button class="secondary" id="modal-skip">Cancel</button>
       <button id="modal-confirm">Add to queue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kiosk / request link modal -->
+<div class="modal-overlay" id="kiosk-link-modal" hidden>
+  <div class="modal">
+    <div class="modal-heading" id="kiosk-link-heading">🏠 Kiosk Link</div>
+    <p class="req-link-label" id="kiosk-link-hint">Open this on a device to request songs. In kiosk mode, any number of devices can use the same link.</p>
+    <div class="req-link-controls">
+      <input id="kiosk-link-url-input" type="text" readonly class="req-link-url" autocomplete="off">
+      <button class="btn-copy-link" id="kiosk-link-copy">Copy</button>
+      <a id="kiosk-link-open" class="btn-copy-link" href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
+    </div>
+    <p class="req-link-label" id="req-link-hint">Use this QR code to open the song request form on another device.</p>
+    <img id="kiosk-link-qr" class="req-link-qr" src="" alt="Kiosk QR code">
+    <div class="modal-actions">
+      <button class="ghost" id="kiosk-link-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Display page link modal -->
+<div class="modal-overlay" id="req-link-modal" hidden>
+  <div class="modal">
+    <div class="modal-heading" id="req-link-heading">📺 Crowd QR Display</div>
+    <p class="req-link-label" id="req-link-hint">Show this page on a screen at your venue so guests can scan the QR code to request songs.</p>
+    <div class="req-link-controls">
+      <input id="req-link-url-input" type="text" readonly class="req-link-url" autocomplete="off">
+      <button class="btn-copy-link" id="req-link-copy">Copy</button>
+      <a id="req-link-open" class="btn-copy-link" href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
+    </div>
+    <p class="req-link-label" id="req-link-hint">Use this QR code to open the crowd QR display on another device.</p>
+    <img id="req-link-qr" class="req-link-qr" src="" alt="Crowd QR Display code">
+    <div class="modal-actions">
+      <button class="ghost" id="req-link-close">Close</button>
     </div>
   </div>
 </div>

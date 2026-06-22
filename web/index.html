@@ -48,18 +48,59 @@
           <div class="link-desc">Fullscreen video player — display on screen or capture in OBS</div>
         </button>
       </div>
-      <button id="new-room-btn" class="btn-ghost hidden">Start a new room</button>
-      <button id="logout-btn" class="btn-ghost hidden">Log out</button>
+      <h3 class="section-label">Requests</h3>
       <div id="request-link-row" class="request-link-row hidden">
-        <div class="request-link-label">🔗 Share this link so guests can request songs</div>
+        <div class="request-link-header">
+          <div class="request-link-label" id="request-link-label">🔗 Share this link so guests can request songs</div>
+          <button id="req-mode-toggle" class="mode-toggle" data-mode="kiosk" title="Kiosk: unlimited requests per device&#10;Crowd: one request per device until processed">
+            <span class="mode-option">🏠 Kiosk</span>
+            <span class="mode-option">📱 Crowd</span>
+          </button>
+        </div>
         <div class="request-link-controls">
           <input id="request-url" type="text" readonly class="request-url-input">
           <button id="copy-request-btn" class="btn-copy">Copy</button>
+          <a id="open-request-link" class="btn-copy" href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
         </div>
-        <img id="request-qr" class="request-qr" src="" alt="QR code" hidden>
+        <button id="request-qr-btn" class="btn-display-qr hidden"><span class="btn-qr-icon">📱</span>Use a QR Code to open the request form on a separate device</button>
+        <div id="display-link-row" class="display-link-row hidden">
+          <div class="request-link-label">📺 Display this page so guests can scan the QR code to open the song request form</div>
+          <div class="request-link-controls">
+            <input id="display-url-input" type="text" readonly class="request-url-input">
+            <button id="copy-display-btn" class="btn-copy">Copy</button>
+            <a id="open-display-link" class="btn-copy" href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
+          </div>
+          <button id="display-qr-btn" class="btn-display-qr hidden"><span class="btn-qr-icon">📱</span>Use a QR Code to open the crowd QR display page on a separate device</button>
+        </div>
       </div>
     </div>
 
+    <button id="logout-btn" class="btn-ghost btn-logout hidden">Log out</button>
+
+  </div>
+
+  <!-- Request QR modal -->
+  <div id="request-qr-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Request form QR code">
+    <div class="modal">
+      <div class="modal-header-row">
+        <span class="modal-heading">Open Request Form</span>
+        <button id="request-qr-close" class="btn-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <p class="modal-hint">Scan to open the song request form on another device.</p>
+      <img id="request-qr-img" class="req-link-qr" src="" alt="Request form QR code">
+    </div>
+  </div>
+
+  <!-- Display QR modal -->
+  <div id="display-qr-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Display page QR code">
+    <div class="modal">
+      <div class="modal-header-row">
+        <span class="modal-heading">Open Crowd QR Display Page</span>
+        <button id="display-qr-close" class="btn-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <p class="modal-hint">Scan to open the crowd display on another device.</p>
+      <img id="display-qr-img" class="req-link-qr" src="" alt="Display page QR code">
+    </div>
   </div>
 
   <script src="script/index.js"></script>

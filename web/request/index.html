@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Song Request</title>
+  <title>Karaoke Request</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F3A4;</text></svg>">
   <link rel="stylesheet" href="../style/request.css">
 </head>
@@ -12,7 +12,7 @@
 
     <header>
       <div class="logo">🎤</div>
-      <h1>Song Request</h1>
+      <h1>Karaoke Request</h1>
       <p class="subtitle">Ask the DJ to play your song</p>
     </header>
 
@@ -44,11 +44,31 @@
       <div id="ws-error" class="error hidden">Connection lost — please reload the page.</div>
     </div>
 
-    <!-- Success confirmation -->
+    <!-- Success confirmation (kiosk mode: brief flash before form resets) -->
     <div id="success-section" class="success hidden">
-      <div class="success-icon">🎤</div>
+      <div class="success-icon">📬</div>
       <div class="success-title">Request Sent!</div>
       <div class="success-sub">The DJ has your request.</div>
+    </div>
+
+    <!-- Crowd mode: device is waiting to be cleared for another request -->
+    <div id="blocked-section" class="success hidden">
+      <div class="success-icon">📬</div>
+      <div class="success-title">Request Sent!</div>
+      <div class="success-sub">Once your request is processed you'll be able to submit another one.</div>
+    </div>
+
+    <!-- Device has been banned by the controller for this session -->
+    <div id="banned-section" class="success hidden" style="--success-color:#ef476f">
+      <div class="success-icon">🚫</div>
+      <div class="success-title">Requests Closed</div>
+      <div class="success-sub">You're unable to submit requests for this session.</div>
+    </div>
+
+    <!-- Kiosk slot taken: another device already has the request page open -->
+    <div id="slot-section" class="card hidden">
+      <p class="hint">The kiosk request screen is already open on another device.</p>
+      <button type="button" id="slot-retry-btn" class="btn-primary" style="margin-top:0.75rem;width:100%">Try Again</button>
     </div>
 
   </div>

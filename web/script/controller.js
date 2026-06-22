@@ -25,8 +25,16 @@ const npEl          = document.getElementById('now-playing');
 const queueEl       = document.getElementById('queue-list');
 const qCount        = document.getElementById('q-count');
 const clearBtn      = document.getElementById('clear-btn');
-const reqList       = document.getElementById('request-list');
-const reqCount      = document.getElementById('req-count');
+const reqList            = document.getElementById('request-list');
+const reqCount           = document.getElementById('req-count');
+const reqModeBtn         = document.getElementById('req-mode-btn');
+const reqClearBlockedBtn = document.getElementById('req-clear-blocked-btn');
+const reqBannedBadge     = document.getElementById('req-banned-badge');
+const reqBannedCount     = document.getElementById('req-banned-count');
+const requesterBadge     = document.getElementById('requester-badge');
+const requesterBadgeText = document.getElementById('requester-badge-text');
+const reqLinkBtn         = document.getElementById('req-link-btn');
+const kioskLinkBtn       = document.getElementById('kiosk-link-btn');
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let ws;
@@ -36,11 +44,11 @@ function connect() {
 
   ws.onopen = () => {
     dot.className = 'dot on';
-    statusText.textContent = 'KC Connected';
+    statusText.textContent = 'Controller';
   };
   ws.onclose = () => {
     dot.className = 'dot off';
-    statusText.textContent = 'KC Disconnected – reconnecting…';
+    statusText.textContent = 'Disconnected – reconnecting…';
     setTimeout(connect, 3000);
   };
   ws.onmessage = (ev) => {
@@ -51,6 +59,30 @@ function connect() {
       render();
       openPlayerBtn.hidden = !!state.playerConnected;
       playerUpBadge.hidden  = !state.playerConnected;
+      // Sync mode toggle pill position.
+      if (reqModeBtn) reqModeBtn.dataset.mode = state.requestMode || 'kiosk';
+      // Show "Unblock all" only when in crowd mode with waiting devices.
+      if (reqClearBlockedBtn) {
+        reqClearBlockedBtn.hidden = !(state.requestMode === 'crowd' && state.blockedCount > 0);
+      }
+      // Banned device badge.
+      if (reqBannedBadge) {
+        const bc = state.bannedCount || 0;
+        reqBannedBadge.hidden = bc === 0;
+        if (reqBannedCount) reqBannedCount.textContent = bc;
+      }
+      // Requester presence badge + request-link button.
+      if (requesterBadge) {
+        const rc = state.requesterCount || 0;
+        requesterBadge.hidden = rc === 0;
+        if (requesterBadgeText) {
+          requesterBadgeText.textContent = state.requestMode === 'kiosk'
+            ? 'KIOSK CONNECTED'
+            : rc + ' REQUESTER' + (rc === 1 ? '' : 'S');
+        }
+        if (reqLinkBtn)   reqLinkBtn.hidden   = state.requestMode !== 'crowd';
+        if (kioskLinkBtn) kioskLinkBtn.hidden = state.requestMode === 'crowd';
+      }
     }
   };
 }
@@ -196,7 +228,8 @@ function renderRequests() {
       '</div>' +
       '<div class="req-actions">' +
         '<button class="req-grant-btn' + (req.id === pendingGrantId ? ' req-grant-btn--active' : '') + '" data-i="' + i + '">Grant</button>' +
-        '<button class="ghost req-dismiss-btn" data-i="' + i + '">×</button>' +
+        '<button class="ghost req-dismiss-btn" data-i="' + i + '" title="Dismiss request">✕</button>' +
+        (state.requestMode !== 'kiosk' ? '<button class="ghost req-ban-btn" data-i="' + i + '" title="Ban this device — blocks any further requests from them">🔨</button>' : '') +
       '</div>' +
     '</li>'
   ).join('');
@@ -225,6 +258,14 @@ function renderRequests() {
       const req = (state.requests || [])[parseInt(btn.dataset.i)];
       if (!req) return;
       send({ type: 'dismiss-request', id: req.id });
+    });
+  });
+
+  reqList.querySelectorAll('.req-ban-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const req = (state.requests || [])[parseInt(btn.dataset.i)];
+      if (!req) return;
+      send({ type: 'ban-device', id: req.id });
     });
   });
 }
@@ -400,6 +441,75 @@ clearBtn.addEventListener('click', () => {
     send({ type: 'remove', index: i });
   }
 });
+
+reqModeBtn.addEventListener('click', () => {
+  const newMode = state.requestMode === 'crowd' ? 'kiosk' : 'crowd';
+  send({ type: 'set-request-mode', mode: newMode });
+});
+
+reqClearBlockedBtn.addEventListener('click', () => {
+  send({ type: 'clear-blocked-devices' });
+});
+
+// ── Display page modal ─────────────────────────────────────────────────────
+const reqLinkModal    = document.getElementById('req-link-modal');
+const reqLinkUrlInput = document.getElementById('req-link-url-input');
+const reqLinkQrImg    = document.getElementById('req-link-qr');
+const reqLinkCopyBtn  = document.getElementById('req-link-copy');
+const reqLinkCloseBtn = document.getElementById('req-link-close');
+const reqLinkOpenBtn  = document.getElementById('req-link-open');
+
+reqLinkBtn.addEventListener('click', () => {
+  const displayUrl = location.origin + '/display/?s=' + encodeURIComponent(sessionId);
+  reqLinkUrlInput.value = displayUrl;
+  if (reqLinkOpenBtn) reqLinkOpenBtn.href = displayUrl;
+  reqLinkQrImg.src = '';
+  reqLinkModal.hidden = false;
+  fetch('/api/qr?s=' + encodeURIComponent(sessionId) + '&data=' + encodeURIComponent(displayUrl))
+    .then(r => r.json())
+    .then(d => { if (d.dataUrl) reqLinkQrImg.src = d.dataUrl; })
+    .catch(() => {});
+});
+
+reqLinkCopyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(reqLinkUrlInput.value).then(() => {
+    reqLinkCopyBtn.textContent = '✓ Copied!';
+    setTimeout(() => { reqLinkCopyBtn.textContent = 'Copy'; }, 2000);
+  }).catch(() => { reqLinkUrlInput.select(); });
+});
+
+reqLinkCloseBtn.addEventListener('click', () => { reqLinkModal.hidden = true; });
+reqLinkModal.addEventListener('click', e => { if (e.target === reqLinkModal) reqLinkModal.hidden = true; });
+
+// ── Kiosk link modal ────────────────────────────────────────────────────
+const kioskLinkModal    = document.getElementById('kiosk-link-modal');
+const kioskLinkUrlInput = document.getElementById('kiosk-link-url-input');
+const kioskLinkQrImg    = document.getElementById('kiosk-link-qr');
+const kioskLinkCopyBtn  = document.getElementById('kiosk-link-copy');
+const kioskLinkCloseBtn = document.getElementById('kiosk-link-close');
+const kioskLinkOpenBtn  = document.getElementById('kiosk-link-open');
+
+kioskLinkBtn.addEventListener('click', () => {
+  const requestUrl = location.origin + '/request/?s=' + encodeURIComponent(sessionId);
+  kioskLinkUrlInput.value = requestUrl;
+  if (kioskLinkOpenBtn) kioskLinkOpenBtn.href = requestUrl;
+  kioskLinkQrImg.src = '';
+  kioskLinkModal.hidden = false;
+  fetch('/api/qr?s=' + encodeURIComponent(sessionId) + '&data=' + encodeURIComponent(requestUrl))
+    .then(r => r.json())
+    .then(d => { if (d.dataUrl) kioskLinkQrImg.src = d.dataUrl; })
+    .catch(() => {});
+});
+
+kioskLinkCopyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(kioskLinkUrlInput.value).then(() => {
+    kioskLinkCopyBtn.textContent = '✓ Copied!';
+    setTimeout(() => { kioskLinkCopyBtn.textContent = 'Copy'; }, 2000);
+  }).catch(() => { kioskLinkUrlInput.select(); });
+});
+
+kioskLinkCloseBtn.addEventListener('click', () => { kioskLinkModal.hidden = true; });
+kioskLinkModal.addEventListener('click', e => { if (e.target === kioskLinkModal) kioskLinkModal.hidden = true; });
 
 // ── Init ───────────────────────────────────────────────────────────────────
 connect();
