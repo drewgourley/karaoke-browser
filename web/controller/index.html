@@ -15,13 +15,13 @@
     <button class="ghost" id="req-link-btn" title="Get the crowd QR display link" hidden>📺 Crowd QR Display</button>
     <button class="ghost" id="kiosk-link-btn" title="Get the kiosk / request link">🏠 Kiosk Link</button>
     <button class="ghost" id="open-player-btn" title="Open the player in a new tab">🎬 Open Player</button>
+    <div class="status status-clickable" id="requester-badge" hidden title="Manage connected devices">
+      <div class="dot on"></div>
+      <span id="requester-badge-text">Kiosk</span>
+    </div>
     <div class="status" id="player-up-badge" hidden>
       <div class="dot on"></div>
       <span>Player</span>
-    </div>
-    <div class="status" id="requester-badge" hidden>
-      <div class="dot on"></div>
-      <span id="requester-badge-text">KIOSK</span>
     </div>
     <div class="status">
       <div class="dot" id="dot"></div>
@@ -167,6 +167,44 @@
     <img id="req-link-qr" class="req-link-qr" src="" alt="Crowd QR Display code">
     <div class="modal-actions">
       <button class="ghost" id="req-link-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Devices modal -->
+<div class="modal-overlay" id="devices-modal" hidden>
+  <div class="modal">
+    <div class="modal-heading">&#x1F527; Connected Devices</div>
+
+    <div class="dm-section">
+      <div class="dm-row">
+        <div>
+          <div class="dm-label">Requestors</div>
+          <div class="dm-hint">Reset if the count looks stuck after a device closed without a clean disconnect.</div>
+        </div>
+        <span class="dm-count" id="dm-requester-count">0</span>
+        <button class="ghost dm-btn" id="dm-reset-btn" title="Recalculate from live connections">&#x21BA; Reset</button>
+      </div>
+    </div>
+
+    <div class="dm-section">
+      <div class="dm-row">
+        <div class="dm-label">Banned Devices</div>
+        <span class="dm-count" id="dm-banned-count">0</span>
+        <button class="ghost dm-btn" id="dm-unban-btn">&#x1F513; Unban all</button>
+      </div>
+    </div>
+
+    <div class="dm-section">
+      <div class="dm-row">
+        <div class="dm-label">Waiting (crowd mode)</div>
+        <span class="dm-count" id="dm-blocked-count">0</span>
+        <button class="ghost dm-btn" id="dm-unblock-btn">&#x21BA; Unblock all</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="ghost" id="devices-modal-close">Close</button>
     </div>
   </div>
 </div>

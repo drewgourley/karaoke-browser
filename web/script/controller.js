@@ -33,6 +33,13 @@ const reqBannedBadge     = document.getElementById('req-banned-badge');
 const reqBannedCount     = document.getElementById('req-banned-count');
 const requesterBadge     = document.getElementById('requester-badge');
 const requesterBadgeText = document.getElementById('requester-badge-text');
+const devicesModal       = document.getElementById('devices-modal');
+const dmRequesterCount   = document.getElementById('dm-requester-count');
+const dmBannedCount      = document.getElementById('dm-banned-count');
+const dmBlockedCount     = document.getElementById('dm-blocked-count');
+const dmResetBtn         = document.getElementById('dm-reset-btn');
+const dmUnbanBtn         = document.getElementById('dm-unban-btn');
+const dmUnblockBtn       = document.getElementById('dm-unblock-btn');
 const reqLinkBtn         = document.getElementById('req-link-btn');
 const kioskLinkBtn       = document.getElementById('kiosk-link-btn');
 // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -81,18 +88,28 @@ function connect() {
         requesterBadge.hidden = rc === 0;
         if (requesterBadgeText) {
           requesterBadgeText.textContent = state.requestMode === 'kiosk'
-            ? 'KIOSK'
-            : rc + ' REQUESTER' + (rc === 1 ? '' : 'S');
+            ? 'Kiosk'
+            : rc + ' Requester' + (rc === 1 ? '' : 'S');
         }
         if (reqLinkBtn)   reqLinkBtn.hidden   = state.requestMode !== 'crowd';
         if (kioskLinkBtn) kioskLinkBtn.hidden = state.requestMode === 'crowd';
       }
+      renderDevicesModal();
     }
   };
 }
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ── Devices modal ──────────────────────────────────────────────────────────
+function renderDevicesModal() {
+  if (dmRequesterCount) dmRequesterCount.textContent = state.requesterCount || 0;
+  if (dmBannedCount)    dmBannedCount.textContent    = state.bannedCount    || 0;
+  if (dmBlockedCount)   dmBlockedCount.textContent   = state.blockedCount   || 0;
+  if (dmUnbanBtn)    dmUnbanBtn.disabled    = !(state.bannedCount  > 0);
+  if (dmUnblockBtn)  dmUnblockBtn.disabled  = !(state.blockedCount > 0);
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
@@ -873,4 +890,11 @@ mxSearchResults.addEventListener('click', e => {
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
+// Devices modal
+requesterBadge.addEventListener('click', () => { renderDevicesModal(); devicesModal.hidden = false; });
+document.getElementById('devices-modal-close').addEventListener('click', () => { devicesModal.hidden = true; });
+devicesModal.addEventListener('click', e => { if (e.target === devicesModal) devicesModal.hidden = true; });
+dmResetBtn.addEventListener('click',  () => send({ type: 'reset-requester-presence' }));
+dmUnbanBtn.addEventListener('click',  () => send({ type: 'unban-all-devices' }));
+dmUnblockBtn.addEventListener('click', () => send({ type: 'clear-blocked-devices' }));
 connect();

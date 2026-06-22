@@ -990,6 +990,31 @@ wss.on('connection', async (ws, req) => {
         break;
       }
 
+      case 'reset-requester-presence': {
+        // Controller only. Recalculates the requester presence counter from
+        // actually-connected local WS sockets. Fixes stale counts after ungraceful disconnects.
+        if (role !== 'controller') break;
+        const localSet = localClients.get(sessionId);
+        const actual = localSet
+          ? [...localSet].filter(c => c.role === 'request' && c.readyState === 1).length
+          : 0;
+        await redis.hset(K.presence(sessionId), 'request', actual);
+        await broadcastState(sessionId);
+        logger.info(`Requester presence reset to ${actual}  session=${sid(sessionId)}`);
+        break;
+      }
+
+      case 'unban-all-devices': {
+        // Controller only. Clears the banned-device list for this session.
+        if (role !== 'controller') break;
+        if (!(session.bannedDevices || []).length) break;
+        session.bannedDevices = [];
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        logger.info(`All devices unbanned  session=${sid(sessionId)}`);
+        break;
+      }
+
       case 'set-request-mode': {
         // Controller only. Switches the session between kiosk and crowd mode.
         if (role !== 'controller') break;

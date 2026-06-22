@@ -789,6 +789,38 @@ a.btn:hover { filter: brightness(1.2); }
 .toggle-switch:has(input:disabled) { pointer-events: none; }
 .mixer-search-status.warn { color: #ffd166; }
 
+/* ── Devices modal ──────────────────────────────────────────────────────── */
+.status-clickable { cursor: pointer; }
+.status-clickable:hover { filter: brightness(1.2); }
+.dm-section {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.dm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.dm-label {
+  flex: 1 1 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.dm-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+.dm-count {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 1.5rem;
+  text-align: center;
+}
+.dm-btn { font-size: 0.72rem !important; flex-shrink: 0; }
+
 #mx-search-results {
   display: flex;
   flex-direction: column;
