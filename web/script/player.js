@@ -534,7 +534,19 @@ function connect() {
     }
   };
 
-  ws.onclose = function () {
+  ws.onclose = function (event) {
+    // Code 4410 = deliberately displaced by a newer player window.
+    // Stop reconnecting to avoid a ping-pong fight between two open windows.
+    if (event.code === 4410) {
+      const banner    = document.getElementById('displaced-banner');
+      const reclaimBtn = document.getElementById('displaced-reclaim-btn');
+      if (banner) banner.hidden = false;
+      if (reclaimBtn) reclaimBtn.onclick = () => {
+        if (banner) banner.hidden = true;
+        connect();
+      };
+      return;
+    }
     setTimeout(connect, 3000);
   };
 

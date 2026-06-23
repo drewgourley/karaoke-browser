@@ -67,8 +67,21 @@ function connect() {
     dot.className = 'dot on';
     statusText.textContent = 'Controller';
   };
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     dot.className = 'dot off';
+    // Code 4410 = deliberately displaced by a newer connection — stop
+    // reconnecting to avoid a ping-pong fight between two open tabs.
+    if (event.code === 4410) {
+      statusText.textContent = 'Replaced by another tab';
+      const banner = document.getElementById('displaced-banner');
+      const reclaimBtn = document.getElementById('displaced-reclaim-btn');
+      if (banner) banner.hidden = false;
+      if (reclaimBtn) reclaimBtn.onclick = () => {
+        if (banner) banner.hidden = true;
+        connect();
+      };
+      return;
+    }
     statusText.textContent = 'Disconnected – reconnecting…';
     setTimeout(connect, 3000);
   };

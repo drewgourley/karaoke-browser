@@ -38,6 +38,31 @@ header {
 }
 header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
 
+/* ── Displaced banner ───────────────────────────────────────────────────── */
+#displaced-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.6rem 1.25rem;
+  background: rgba(239,71,111,0.12);
+  border-bottom: 1px solid rgba(239,71,111,0.25);
+  font-size: 0.875rem;
+  color: #ef476f;
+}
+#displaced-banner[hidden] { display: none !important; }
+#displaced-reclaim-btn {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.9rem;
+  background: rgba(239,71,111,0.18);
+  border: 1px solid rgba(239,71,111,0.4);
+  border-radius: 6px;
+  color: #ef476f;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#displaced-reclaim-btn:hover { background: rgba(239,71,111,0.3); }
+
 .header-right {
   display: flex;
   align-items: center;

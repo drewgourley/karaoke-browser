@@ -345,6 +345,38 @@ html, body {
 
 [hidden] { display: none !important; }
 
+/* Displaced banner — shown when another player window takes the slot */
+#displaced-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(15,15,26,0.92);
+  border-bottom: 1px solid rgba(239,71,111,0.4);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.95rem;
+  color: #ef476f;
+  backdrop-filter: blur(6px);
+}
+#displaced-banner[hidden] { display: none !important; }
+#displaced-reclaim-btn {
+  font-size: 0.85rem;
+  padding: 0.35rem 1rem;
+  background: rgba(239,71,111,0.18);
+  border: 1px solid rgba(239,71,111,0.45);
+  border-radius: 6px;
+  color: #ef476f;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#displaced-reclaim-btn:hover { background: rgba(239,71,111,0.32); }
+
 /* Fullscreen toggle — auto-hides, reappears on mouse movement */
 #fullscreen-btn {
   position: fixed;

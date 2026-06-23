@@ -978,7 +978,7 @@ wss.on('connection', async (ws, req) => {
         // connection races the close of the old one.  Force-close the old socket
         // and steal the slot; its close handler will no-op the release because
         // the slot value will no longer match its connId.
-        liveLocal.close(1001, 'Replaced by new connection');
+        liveLocal.close(4410, 'Replaced by new connection');
         await redis.set(slotKey(sessionId, role), connId, 'EX', SLOT_TTL_SECS);
         claimed = true;
         logger.info(`WS slot takeover  role=${role} session=${sid(sessionId)} ip=${ip}`);
