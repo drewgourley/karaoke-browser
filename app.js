@@ -251,6 +251,20 @@ function newSessionData() {
     micVolume:            80,        // 0–100: microphone gain
     micMuted:             false,     // microphone muted
     standbyPaused:        false,     // standby music paused
+    playerMode:           'karaoke',  // 'karaoke' | 'standby'
+    standbyTitle:         'Karaoke Browser',
+    standbySubtitle:      'Your karaoke night command center',
+    standbyColors:        ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'],
+    standbyTitleColor:    '#ffffff',
+    standbyTitleOutline:  '#000000',
+    standbyTitleFont:     '',
+    standbyTitleSize:     0,
+    standbyTitleOutlineSize: 20,
+    standbySubtitleColor: '#ffffff',
+    standbySubtitleOutline: '#000000',
+    standbySubtitleFont:  '',
+    standbySubtitleSize:  0,
+    standbySubtitleOutlineSize: 8,
     lastActivity:         Date.now(),
   };
 }
@@ -331,7 +345,9 @@ app.use(helmet({
       // player.js injects the YouTube IFrame API script dynamically
       scriptSrc:   ["'self'", 'https://www.youtube.com', 'https://s.ytimg.com'],
       // inline style="" attributes are used throughout the HTML
-      styleSrc:    ["'self'", "'unsafe-inline'"],
+      styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      // Google Fonts files are served from fonts.gstatic.com
+      fontSrc:     ["'self'", 'https://fonts.gstatic.com'],
       // QR codes are data: URIs; thumbnails come from YouTube's CDN
       imgSrc:      ["'self'", 'data:', 'https://img.youtube.com', 'https://i.ytimg.com', 'https://s.ytimg.com'],
       // YouTube player iframe
@@ -360,9 +376,10 @@ function addLocalClient(sessionId, ws) {
 
 function removeLocalClient(sessionId, ws) {
   const set = localClients.get(sessionId);
-  if (!set) return;
-  set.delete(ws);
+  if (!set) return false;
+  const removed = set.delete(ws);
   if (set.size === 0) localClients.delete(sessionId);
+  return removed;
 }
 
 // ── Per-session message serialization ────────────────────────────────────────
@@ -399,8 +416,17 @@ async function claimSlot(sessionId, role, connId) {
   return result === 'OK';
 }
 
-async function releaseSlot(sessionId, role) {
-  await redis.del(slotKey(sessionId, role));
+async function releaseSlot(sessionId, role, connId) {
+  if (connId) {
+    // Only delete if we still own this slot — guards against stomping a
+    // replacement connection's freshly-claimed slot (browser refresh race).
+    await redis.eval(
+      "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end",
+      1, slotKey(sessionId, role), connId
+    );
+  } else {
+    await redis.del(slotKey(sessionId, role));
+  }
 }
 
 async function refreshSlot(sessionId, role) {
@@ -417,14 +443,29 @@ async function broadcastState(sessionId) {
     redis.hmget(K.presence(sessionId), 'player', 'controller', 'request'),
   ]);
   if (!session) return;
+
+  // Self-heal: if this instance has a live open socket for a role, always count
+  // it as connected regardless of Redis presence (guards against counter races
+  // where markPresence(-1) fires just before markPresence(+1)).
+  const localSet = localClients.get(sessionId);
+  const liveLocal = { player: 0, controller: 0, request: 0 };
+  if (localSet) {
+    for (const c of localSet) {
+      if (c.readyState === 1 && c.role in liveLocal) liveLocal[c.role]++;
+    }
+  }
+  const playerCount     = Math.max(Number(presenceArr[0]) || 0, liveLocal.player);
+  const controllerCount = Math.max(Number(presenceArr[1]) || 0, liveLocal.controller);
+  const requestCount    = Math.max(Number(presenceArr[2]) || 0, liveLocal.request);
+
   await publishRaw(sessionId, {
     type:                 'state',
     queue:                 session.queue,
     nowPlaying:            session.nowPlaying,
     paused:                session.paused,
-    playerConnected:       Number(presenceArr[0]) > 0,
-    controllerConnected:   Number(presenceArr[1]) > 0,
-    requesterCount:        Math.max(0, Number(presenceArr[2])),
+    playerConnected:       playerCount     > 0,
+    controllerConnected:   controllerCount > 0,
+    requesterCount:        requestCount,
     // Strip deviceToken from requests — it is stored server-side only.
     requests:              session.requests.map(({ deviceToken: _dt, ...r }) => r),
     requestMode:           session.requestMode,
@@ -440,6 +481,20 @@ async function broadcastState(sessionId) {
     micVolume:             session.micVolume      ?? 80,
     micMuted:              !!session.micMuted,
     standbyPaused:         session.standbyPaused  ?? false,
+    playerMode:            session.playerMode      || 'karaoke',
+    standbyTitle:          session.standbyTitle    ?? 'Karaoke Browser',
+    standbySubtitle:       session.standbySubtitle ?? 'Your karaoke night command center',
+    standbyColors:         session.standbyColors   || ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'],
+    standbyTitleColor:          session.standbyTitleColor         ?? '#ffffff',
+    standbyTitleOutline:         session.standbyTitleOutline       ?? '#000000',
+    standbyTitleFont:            session.standbyTitleFont          ?? '',
+    standbyTitleSize:            session.standbyTitleSize          ?? 0,
+    standbyTitleOutlineSize:     session.standbyTitleOutlineSize   ?? 20,
+    standbySubtitleColor:        session.standbySubtitleColor      ?? '#ffffff',
+    standbySubtitleOutline:      session.standbySubtitleOutline    ?? '#000000',
+    standbySubtitleFont:         session.standbySubtitleFont       ?? '',
+    standbySubtitleSize:         session.standbySubtitleSize       ?? 0,
+    standbySubtitleOutlineSize:  session.standbySubtitleOutlineSize ?? 8,
   });
 }
 
@@ -857,6 +912,26 @@ app.get('/api/qr', qrLimiter, async (req, res) => {
   }
 }); 
 
+// Return only the standby display-theme fields for a session (used by the display page).
+app.get('/api/standby-theme', async (req, res) => {
+  const { s } = req.query;
+  if (!s || typeof s !== 'string' || s.length > 128) {
+    return res.status(400).json({ error: 'Invalid session id' });
+  }
+  const session = await getSession(s);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  const defs = ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'];
+  res.json({
+    standbyColors:              session.standbyColors              || defs,
+    standbyTitleColor:          session.standbyTitleColor          || '#ffffff',
+    standbyTitleOutline:        session.standbyTitleOutline        || '#000000',
+    standbyTitleOutlineSize:    session.standbyTitleOutlineSize    ?? 20,
+    standbySubtitleColor:       session.standbySubtitleColor       || '#ffffff',
+    standbySubtitleOutline:     session.standbySubtitleOutline     || '#000000',
+    standbySubtitleOutlineSize: session.standbySubtitleOutlineSize ?? 8,
+  });
+});
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
 wss.on('connection', async (ws, req) => {
@@ -891,15 +966,25 @@ wss.on('connection', async (ws, req) => {
     let claimed = await claimSlot(sessionId, role, connId);
     if (!claimed) {
       // Slot exists in Redis — check if a live local WS actually holds it.
-      // If not, it's a stale slot left by a server restart before the TTL expired.
       const localSet = localClients.get(sessionId);
-      const hasLiveLocal = localSet && [...localSet].some(c => c.role === role && c.readyState === 1);
-      if (!hasLiveLocal) {
+      const liveLocal = localSet && [...localSet].find(c => c.role === role && c.readyState === 1);
+      if (!liveLocal) {
+        // No live local holder — stale slot from a server restart before TTL expired.
         await redis.set(slotKey(sessionId, role), connId, 'EX', SLOT_TTL_SECS);
         claimed = true;
         logger.info(`WS stale slot evicted  role=${role} session=${sid(sessionId)} ip=${ip}`);
+      } else {
+        // Live WS exists for this role — likely a browser refresh where the new
+        // connection races the close of the old one.  Force-close the old socket
+        // and steal the slot; its close handler will no-op the release because
+        // the slot value will no longer match its connId.
+        liveLocal.close(1001, 'Replaced by new connection');
+        await redis.set(slotKey(sessionId, role), connId, 'EX', SLOT_TTL_SECS);
+        claimed = true;
+        logger.info(`WS slot takeover  role=${role} session=${sid(sessionId)} ip=${ip}`);
       }
     }
+    ws._slotConnId = connId;
     if (!claimed) {
       logger.warn(`WS slot occupied  role=${role} session=${sid(sessionId)} ip=${ip}`);
       ws.close(4409, 'Role already connected');
@@ -935,12 +1020,12 @@ wss.on('connection', async (ws, req) => {
 
   ws.on('close', async (code) => {
     if (slotHeartbeat) clearInterval(slotHeartbeat);
-    if (role === 'controller' || role === 'player') await releaseSlot(sessionId, role);
+    if (role === 'controller' || role === 'player') await releaseSlot(sessionId, role, ws._slotConnId);
     if (ws._hasRequestSlot) await releaseSlot(sessionId, 'request');
-    removeLocalClient(sessionId, ws);
-    await markPresence(sessionId, role, -1);
-    logger.info(`WS disconnect role=${role.padEnd(10)} session=${sid(sessionId)} code=${code}`);
-    if (role === 'player' || role === 'controller' || role === 'request') await broadcastState(sessionId);
+    const wasLocal = removeLocalClient(sessionId, ws);
+    if (wasLocal) await markPresence(sessionId, role, -1);
+    logger.info(`WS disconnect role=${role.padEnd(10)} session=${sid(sessionId)} code=${code} wasLocal=${wasLocal}`);
+    if (wasLocal && (role === 'player' || role === 'controller' || role === 'request')) await broadcastState(sessionId);
   });
 
   ws.on('message', (raw) => {
@@ -1347,6 +1432,45 @@ wss.on('connection', async (ws, req) => {
         logger.info(`Device banned: session=${sid(sessionId)}`);
         break;
       }
+
+      case 'set-player-mode': {
+        // Controller only. Switches the player between karaoke and standby mode.
+        if (role !== 'controller') break;
+        const newMode = msg.mode === 'standby' ? 'standby' : 'karaoke';
+        if (session.playerMode === newMode) break;
+        session.playerMode = newMode;
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'set-standby-settings': {
+        // Controller only. Updates standby screen title, subtitle, gradient colors, text colors, fonts, and sizes.
+        if (role !== 'controller') break;
+        const hexRe = /^#[0-9a-fA-F]{6}$/;
+        if (typeof msg.title    === 'string') session.standbyTitle    = msg.title.slice(0, 80);
+        if (typeof msg.subtitle === 'string') session.standbySubtitle = msg.subtitle.slice(0, 120);
+        if (Array.isArray(msg.colors)) {
+          const defs = ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'];
+          session.standbyColors = [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
+            const c = msg.colors[i];
+            return (typeof c === 'string' && hexRe.test(c)) ? c : defs[i];
+          });
+        }
+        if (typeof msg.titleColor      === 'string' && hexRe.test(msg.titleColor))      session.standbyTitleColor      = msg.titleColor;
+        if (typeof msg.titleOutline    === 'string' && hexRe.test(msg.titleOutline))    session.standbyTitleOutline    = msg.titleOutline;
+        if (typeof msg.subtitleColor   === 'string' && hexRe.test(msg.subtitleColor))   session.standbySubtitleColor   = msg.subtitleColor;
+        if (typeof msg.subtitleOutline === 'string' && hexRe.test(msg.subtitleOutline)) session.standbySubtitleOutline = msg.subtitleOutline;
+        if (typeof msg.titleFont    === 'string') session.standbyTitleFont    = msg.titleFont.replace(/[^a-zA-Z0-9 ,'\-_|]/g, '').slice(0, 200);
+        if (Number.isFinite(msg.titleSize))       session.standbyTitleSize    = Math.max(0, Math.min(500, Math.round(msg.titleSize)));
+        if (Number.isFinite(msg.titleOutlineSize)) session.standbyTitleOutlineSize = Math.max(0, Math.min(30, Math.round(msg.titleOutlineSize)));
+        if (typeof msg.subtitleFont    === 'string') session.standbySubtitleFont    = msg.subtitleFont.replace(/[^a-zA-Z0-9 ,'\-_|]/g, '').slice(0, 200);
+        if (Number.isFinite(msg.subtitleSize))       session.standbySubtitleSize    = Math.max(0, Math.min(500, Math.round(msg.subtitleSize)));
+        if (Number.isFinite(msg.subtitleOutlineSize)) session.standbySubtitleOutlineSize = Math.max(0, Math.min(30, Math.round(msg.subtitleOutlineSize)));
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
     }
     }); // end withSessionLock
   });
@@ -1372,6 +1496,24 @@ const PORT = process.env.PORT || 3444;
 async function start() {
   await redis.connect();
   await subRedis.connect();
+
+  // On startup, reset all presence counters. If this process was killed before
+  // close-handlers ran, the hincrby decrements never fired and counters are
+  // stale. Since we haven't started accepting connections yet, every count
+  // must be 0.
+  try {
+    const sessionIds = await redis.smembers(K.sessions());
+    if (sessionIds.length) {
+      const pipeline = redis.pipeline();
+      for (const id of sessionIds) {
+        pipeline.hset(K.presence(id), 'player', 0, 'controller', 0, 'request', 0);
+      }
+      await pipeline.exec();
+      logger.info(`Startup: reset presence for ${sessionIds.length} session(s)`);
+    }
+  } catch (e) {
+    logger.warn('Startup presence reset failed:', e.message);
+  }
 
   // Pattern-subscribe to all session state channels.
   // Any message published by any instance is forwarded to locally-connected

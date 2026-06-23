@@ -48,27 +48,82 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 1.75rem;
-  background: #0f0f1a;
+  background: transparent;
+  overflow: hidden;
   opacity: 0;
   transition: opacity 0.6s ease;
   pointer-events: none;
   z-index: 5;
 }
 #idle.visible { opacity: 1; }
-#idle-icon  { font-size: 6rem; line-height: 1; opacity: 0.6; }
-#idle-label {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 2.5rem;
-  font-weight: 700;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: #4cc9f0;
+
+/* Animated morphing gradient behind the standby slate */
+.standby-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    var(--sc1, #4cc9f0)  0%,
+    var(--sc2, #4361ee) 14%,
+    var(--sc3, #7c3aed) 29%,
+    var(--sc4, #f72585) 43%,
+    var(--sc5, #ff6b35) 57%,
+    var(--sc6, #ffd166) 71%,
+    var(--sc7, #06d6a0) 86%,
+    var(--sc8, #3a0ca3) 100%
+  );
+  background-size: 400% 400%;
+  animation: standby-gradient 10s ease infinite;
 }
-#idle-sub {
+@keyframes standby-gradient {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+/* Microphone watermark — diamond pattern drifting diagonally */
+.standby-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.2;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='black' transform='translate(28 15) scale(2)' d='M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='black' transform='translate(28 15) scale(2)' d='M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z'/%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  background-position: 0 0, 50px 50px;
+  animation: mic-drift 15s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes mic-drift {
+  0%   { background-position: 0 0, 50px 50px; }
+  100% { background-position: 100px 100px, 150px 150px; }
+}
+
+.standby-title {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 1.1rem;
-  color: #64748b;
-  letter-spacing: 0.05em;
+  font-size: clamp(3rem, 10vw, 9rem);
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 4px 40px rgba(0,0,0,0.35);
+  letter-spacing: 0.04em;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  line-height: 1.1;
+  paint-order: stroke fill;
+}
+.standby-subtitle {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: clamp(2rem, 4vw, 4rem);
+  color: rgba(255,255,255,0.85);
+  text-shadow: 0 2px 16px rgba(0,0,0,0.3);
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  letter-spacing: 0.03em;
+  paint-order: stroke fill;
 }
 
 #embed-error {
@@ -133,11 +188,13 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 1.5rem;
+  position: relative;
+  z-index: 1;
 }
 #idle.crowd,
 #singer-slate.crowd {
   display: grid !important;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr min(600px, 50%);
   align-items: stretch;
   gap: 0;
 }
@@ -150,19 +207,52 @@ html, body {
   justify-content: center;
   gap: 1.25rem;
   padding: 2.5rem 2rem;
-  border-left: 1px solid rgba(255,255,255,0.07);
+  border-left: 1px solid rgba(255,255,255,0.18);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #e2e8f0;
+  position: relative;
+  z-index: 1;
+  background: rgba(0,0,0,0.18);
 }
-.scq-logo    { font-size: clamp(2.5rem,6vw,4rem); line-height: 1; filter: drop-shadow(0 0 16px rgba(76,201,240,0.45)); }
-.scq-heading { font-size: clamp(1.5rem,4vw,3rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; text-align: center; }
-.scq-sub     { font-size: clamp(0.85rem,2vw,1.1rem); color: #64748b; text-align: center; line-height: 1.55; }
+#singer-slate.crowd .slate-crowd-qr {
+  background: linear-gradient(
+    135deg,
+    var(--sc1, #4cc9f0)  0%,
+    var(--sc2, #4361ee) 14%,
+    var(--sc3, #7c3aed) 29%,
+    var(--sc4, #f72585) 43%,
+    var(--sc5, #ff6b35) 57%,
+    var(--sc6, #ffd166) 71%,
+    var(--sc7, #06d6a0) 86%,
+    var(--sc8, #3a0ca3) 100%
+  );
+  background-size: 400% 400%;
+  animation: standby-gradient 10s ease infinite;
+  overflow: hidden;
+}
+#singer-slate.crowd .slate-crowd-qr::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.2;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='black' transform='translate(28 15) scale(2)' d='M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='black' transform='translate(28 15) scale(2)' d='M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z'/%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  background-position: 0 0, 50px 50px;
+  animation: mic-drift 15s linear infinite;
+  pointer-events: none;
+}
+.scq-logo, .scq-heading, .scq-sub, .scq-card, .scq-url { position: relative; z-index: 1; }
+.scq-logo    { font-size: clamp(2.5rem,6vw,4rem); line-height: 1; filter: drop-shadow(0 0 16px rgba(255,255,255,0.45)); }
+.scq-heading { font-size: clamp(1.5rem,4vw,3rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; text-align: center; color: var(--scq-heading-color, #ffffff); -webkit-text-stroke: var(--scq-heading-stroke, 0px transparent); paint-order: stroke fill; }
+.scq-sub     { font-size: clamp(0.85rem,2vw,1.1rem); color: var(--scq-sub-color, #ffffff); text-align: center; line-height: 1.55; -webkit-text-stroke: var(--scq-sub-stroke, 0px transparent); paint-order: stroke fill; }
 .scq-card    { background: #fff; border-radius: 20px; padding: 14px; animation: scq-glow 3s ease-in-out infinite; }
 .scq-img     { display: block; width: min(240px,30vw); height: min(240px,30vw); image-rendering: pixelated; }
 .scq-url     { display: none; font-size: clamp(0.6rem,1.2vw,0.8rem); color: #64748b; font-family: 'Courier New', monospace; word-break: break-all; text-align: center; max-width: min(240px,30vw); }
 @keyframes scq-glow {
-  0%, 100% { box-shadow: 0 0 40px rgba(76,201,240,0.20); }
-  50%       { box-shadow: 0 0 80px rgba(76,201,240,0.50); }
+  0%, 100% { box-shadow: 0 0 40px rgba(255,255,255,0.20); }
+  50%       { box-shadow: 0 0 80px rgba(255,255,255,0.50); }
 }
 
 /* Start gate — requires one user tap to unlock autoplay */

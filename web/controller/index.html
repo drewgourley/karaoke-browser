@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Karaoke Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Carter+One&family=Chango&family=Domine:wght@400;700&family=Great+Vibes&family=Instrument+Serif&family=MonteCarlo&family=Oswald:wght@200;400;600&family=Raleway:wght@100;400;800&family=SN+Pro:wght@200;400;800&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F3A4;</text></svg>">
   <link rel="stylesheet" href="../style/controller.css">
 </head>
@@ -39,7 +42,14 @@
     <div class="card">
       <div class="queue-header">
         <div class="card-label" style="margin-bottom:0">Now Playing</div>
-        <button class="ghost" id="requeue-btn" title="Requeue: put current track back at the top of the queue and play next" style="font-size:0.75rem" hidden>&#x21A9; Requeue</button>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <button class="ghost" id="requeue-btn" title="Requeue: put current track back at the top of the queue and play next" style="font-size:0.75rem" hidden>&#x21A9; Requeue</button>
+          <div class="player-mode-toggle" id="player-mode-toggle" data-mode="karaoke" title="Standby: show standby screen&#10;Karaoke: normal karaoke playback">
+            <span class="pmt-track"></span>
+            <button class="pmt-opt" id="pmt-standby">🌙 Standby</button>
+            <button class="pmt-opt" id="pmt-karaoke">🎤 Karaoke</button>
+          </div>
+        </div>
       </div>
       <div id="now-playing"><span class="np-idle">Nothing playing</span></div>
     </div>
@@ -66,11 +76,12 @@
     <div class="card">
       <div class="find-header">
         <div class="card-label" style="margin-bottom:0">Find Song</div>
-        <div class="find-tabs">
-          <button class="tab-btn active" id="tab-search">&#x1F50D; Search</button>
-          <button class="tab-btn" id="tab-url">&#x1F517; Paste URL</button>
+          <div class="find-tab-toggle" id="find-tab-toggle" data-tab="search">
+            <span class="find-tab-track"></span>
+            <button class="find-tab-btn" id="tab-search">🔍 Search</button>
+            <button class="find-tab-btn" id="tab-url">🔗 Paste URL</button>
+          </div>
         </div>
-      </div>
 
       <!-- Search panel -->
       <div id="panel-search">
@@ -112,6 +123,7 @@
         <div style="display:flex;gap:0.4rem;align-items:center">
           <button id="req-clear-blocked-btn" class="btn-clear-blocked" title="Unblock all waiting crowd devices" hidden>↺ Unblock all</button>
           <button id="req-mode-btn" class="mode-toggle" data-mode="kiosk" title="Kiosk: unlimited requests per device&#10;Crowd: one request per device until processed">
+            <span class="mode-track"></span>
             <span class="mode-option">🏠 Kiosk</span>
             <span class="mode-option">📱 Crowd</span>
           </button>
@@ -212,6 +224,173 @@
   </div>
 </div>
 
+<!-- Standby settings modal -->
+<div class="modal-overlay" id="standby-settings-modal" hidden>
+  <div class="modal" style="width:min(580px,calc(100vw - 2rem))">
+    <div class="modal-heading">🖥️ Standby Screen</div>
+
+    <label class="ss-label">Title</label>
+    <input type="text" id="ss-title" maxlength="80" placeholder="Karaoke Browser" autocomplete="off" />
+    <select id="ss-title-font" class="ss-font-select">
+      <option value="">— Default —</option>
+      <optgroup label="Sans-Serif">
+        <option value="'Oswald', sans-serif|200">Oswald · ExtraLight</option>
+        <option value="'Oswald', sans-serif|400">Oswald · Regular</option>
+        <option value="'Oswald', sans-serif|600">Oswald · SemiBold</option>
+        <option value="'Raleway', sans-serif|100">Raleway · Thin</option>
+        <option value="'Raleway', sans-serif|400">Raleway · Regular</option>
+        <option value="'Raleway', sans-serif|800">Raleway · ExtraBold</option>
+        <option value="'SN Pro', sans-serif|200">SN Pro · ExtraLight</option>
+        <option value="'SN Pro', sans-serif|400">SN Pro · Regular</option>
+        <option value="'SN Pro', sans-serif|800">SN Pro · ExtraBold</option>
+      </optgroup>
+      <optgroup label="Serif">
+        <option value="'Domine', serif|400">Domine · Regular</option>
+        <option value="'Domine', serif|700">Domine · Bold</option>
+        <option value="'Instrument Serif', serif">Instrument Serif</option>
+        <option value="'Abril Fatface', serif">Abril Fatface</option>
+      </optgroup>
+      <optgroup label="Script">
+        <option value="'MonteCarlo', cursive">MonteCarlo</option>
+        <option value="'Great Vibes', cursive">Great Vibes</option>
+      </optgroup>
+      <optgroup label="Display">
+        <option value="'Carter One', sans-serif">Carter One</option>
+        <option value="'Chango', sans-serif">Chango</option>
+      </optgroup>
+    </select>
+    <div class="ss-size-row">
+      <div class="ss-size-field">
+        <span>Size</span>
+        <input type="number" id="ss-title-size" min="1" max="500" step="1" placeholder="auto">
+        <span>px</span>
+      </div>
+      <div class="ss-size-field">
+        <span>Outline</span>
+        <input type="number" id="ss-title-outline-size" min="0" max="50" step="1" value="20">
+        <span>px</span>
+      </div>
+    </div>
+    <label class="ss-label">Title Colors</label>
+    <div class="ss-color-preview-row">
+      <div class="ss-colors">
+        <label class="ss-color-swatch">
+          <input type="color" id="ss-title-color" value="#ffffff">
+          <span>Text</span>
+        </label>
+        <label class="ss-color-swatch">
+          <input type="color" id="ss-title-outline" value="#000000">
+          <span>Outline</span>
+        </label>
+      </div>
+      <div class="ss-preview" id="ss-title-preview">
+        <div class="ss-preview-bg" id="ss-preview-bg-title"></div>
+        <span class="ss-preview-text" id="ss-title-preview-text">Karaoke Browser</span>
+      </div>
+    </div>
+
+    <label class="ss-label">Subtitle <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <input type="text" id="ss-subtitle" maxlength="120" placeholder="Your karaoke night command center" autocomplete="off" />
+    <select id="ss-subtitle-font" class="ss-font-select">
+      <option value="">— Default —</option>
+      <optgroup label="Sans-Serif">
+        <option value="'Oswald', sans-serif|200">Oswald · ExtraLight</option>
+        <option value="'Oswald', sans-serif|400">Oswald · Regular</option>
+        <option value="'Oswald', sans-serif|600">Oswald · SemiBold</option>
+        <option value="'Raleway', sans-serif|100">Raleway · Thin</option>
+        <option value="'Raleway', sans-serif|400">Raleway · Regular</option>
+        <option value="'Raleway', sans-serif|800">Raleway · ExtraBold</option>
+        <option value="'SN Pro', sans-serif|200">SN Pro · ExtraLight</option>
+        <option value="'SN Pro', sans-serif|400">SN Pro · Regular</option>
+        <option value="'SN Pro', sans-serif|800">SN Pro · ExtraBold</option>
+      </optgroup>
+      <optgroup label="Serif">
+        <option value="'Domine', serif|400">Domine · Regular</option>
+        <option value="'Domine', serif|700">Domine · Bold</option>
+        <option value="'Instrument Serif', serif">Instrument Serif</option>
+        <option value="'Abril Fatface', serif">Abril Fatface</option>
+      </optgroup>
+      <optgroup label="Script">
+        <option value="'MonteCarlo', cursive">MonteCarlo</option>
+        <option value="'Great Vibes', cursive">Great Vibes</option>
+      </optgroup>
+      <optgroup label="Display">
+        <option value="'Carter One', sans-serif">Carter One</option>
+        <option value="'Chango', sans-serif">Chango</option>
+      </optgroup>
+    </select>
+    <div class="ss-size-row">
+      <div class="ss-size-field">
+        <span>Size</span>
+        <input type="number" id="ss-subtitle-size" min="1" max="500" step="1" placeholder="auto">
+        <span>px</span>
+      </div>
+      <div class="ss-size-field">
+        <span>Outline</span>
+        <input type="number" id="ss-subtitle-outline-size" min="0" max="50" step="1" value="8">
+        <span>px</span>
+      </div>
+    </div>
+    <label class="ss-label">Subtitle Colors</label>
+    <div class="ss-color-preview-row">
+      <div class="ss-colors">
+        <label class="ss-color-swatch">
+          <input type="color" id="ss-subtitle-color" value="#ffffff">
+          <span>Text</span>
+        </label>
+        <label class="ss-color-swatch">
+          <input type="color" id="ss-subtitle-outline" value="#000000">
+          <span>Outline</span>
+        </label>
+      </div>
+      <div class="ss-preview" id="ss-subtitle-preview">
+        <div class="ss-preview-bg" id="ss-preview-bg-subtitle"></div>
+        <span class="ss-preview-text" id="ss-subtitle-preview-text">Subtitle</span>
+      </div>
+    </div>
+
+    <label class="ss-label">Background Colors</label>
+    <div class="ss-colors">
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color1" value="#4cc9f0">
+        <span>1</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color2" value="#4361ee">
+        <span>2</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color3" value="#7c3aed">
+        <span>3</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color4" value="#f72585">
+        <span>4</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color5" value="#ff6b35">
+        <span>5</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color6" value="#ffd166">
+        <span>6</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color7" value="#06d6a0">
+        <span>7</span>
+      </label>
+      <label class="ss-color-swatch">
+        <input type="color" id="ss-color8" value="#3a0ca3">
+        <span>8</span>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="ss-cancel">Cancel</button>
+      <button id="ss-save">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Mixer Panel ──────────────────────────────────────────────────────── -->
 <div id="mixer-panel">
   <div id="mixer-handle">
@@ -224,7 +403,10 @@
     <!-- Col 1: Standby now playing -->
     <div class="col">
       <div class="card">
-        <div class="card-label">Standby Music</div>
+          <div class="queue-header" style="margin-bottom:0.9rem">
+            <div class="card-label" style="margin-bottom:0">Standby Music</div>
+            <button class="ghost" id="standby-settings-btn" style="font-size:0.75rem">🎨 Customize Standby Screen</button>
+          </div>
         <div id="standby-now-playing"><span class="np-idle">No playlist set</span></div>
       </div>
       <div class="card" id="standby-track-card" hidden>
@@ -243,9 +425,10 @@
       <div class="card">
         <div class="find-header">
           <div class="card-label" style="margin-bottom:0">Standby Playlist</div>
-          <div class="find-tabs">
-            <button class="tab-btn active" id="mx-tab-search">&#x1F50D; Search</button>
-            <button class="tab-btn" id="mx-tab-url">&#x1F517; Paste URL</button>
+          <div class="find-tab-toggle" id="mx-find-tab-toggle" data-tab="search">
+            <span class="find-tab-track"></span>
+            <button class="find-tab-btn" id="mx-tab-search">🔍 Search</button>
+            <button class="find-tab-btn" id="mx-tab-url">🔗 Paste URL</button>
           </div>
         </div>
         <!-- Search panel -->

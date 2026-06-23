@@ -41,24 +41,35 @@ function showError() {
   errorPage.hidden   = false;
 }
 
+function applyTheme(t) {
+  const root = document.documentElement;
+  const defs  = ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'];
+  (t.standbyColors || defs).forEach((c, i) => root.style.setProperty(`--sc${i + 1}`, c || defs[i]));
+  root.style.setProperty('--scq-heading-color',  t.standbyTitleColor || '#ffffff');
+  const tSz = t.standbyTitleOutlineSize ?? 20;
+  root.style.setProperty('--scq-heading-stroke', tSz > 0 ? `${Math.ceil(tSz / 2)}px ${t.standbyTitleOutline || '#000000'}` : '0px transparent');
+  root.style.setProperty('--scq-sub-color',  t.standbySubtitleColor || '#ffffff');
+  const sSz = t.standbySubtitleOutlineSize ?? 8;
+  root.style.setProperty('--scq-sub-stroke', sSz > 0 ? `${Math.ceil(sSz / 2)}px ${t.standbySubtitleOutline || '#000000'}` : '0px transparent');
+}
+
 if (!sessionId) {
   showError();
 } else {
   const requestUrl = location.origin + '/request/?s=' + encodeURIComponent(sessionId);
   urlPill.textContent = requestUrl;
 
-  fetch('/api/qr?s=' + encodeURIComponent(sessionId) + '&data=' + encodeURIComponent(requestUrl))
-    .then(r => {
-      if (!r.ok) { showError(); return null; }
-      return r.json();
-    })
-    .then(d => {
-      if (!d) return;
-      if (d.dataUrl) {
-        qrImg.src = d.dataUrl;
-      } else {
-        showError();
-      }
-    })
-    .catch(() => showError());
+  // Fetch theme + QR in parallel.
+  Promise.all([
+    fetch('/api/standby-theme?s=' + encodeURIComponent(sessionId)).then(r => r.ok ? r.json() : null),
+    fetch('/api/qr?s=' + encodeURIComponent(sessionId) + '&data=' + encodeURIComponent(requestUrl))
+      .then(r => { if (!r.ok) { showError(); return null; } return r.json(); }),
+  ]).then(([theme, qr]) => {
+    if (theme) applyTheme(theme);
+    if (qr && qr.dataUrl) {
+      qrImg.src = qr.dataUrl;
+    } else if (!qr) {
+      showError();
+    }
+  }).catch(() => showError());
 }

@@ -1,24 +1,69 @@
 :root {
-  --bg:      #0f0f1a;
-  --surface: #1a1a2e;
-  --accent:  #4cc9f0;
-  --text:    #e2e8f0;
-  --muted:   #64748b;
-  --border:  #2a2a45;
+  --sc1: #4cc9f0;
+  --sc2: #4361ee;
+  --sc3: #7c3aed;
+  --sc4: #f72585;
+  --sc5: #ff6b35;
+  --sc6: #ffd166;
+  --sc7: #06d6a0;
+  --sc8: #3a0ca3;
+  --scq-heading-color:  #ffffff;
+  --scq-heading-stroke: 0px transparent;
+  --scq-sub-color:      #ffffff;
+  --scq-sub-stroke:     0px transparent;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 [hidden] { display: none !important; }
 
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
 body {
-  background: var(--bg);
-  color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  min-height: 100vh;
+  background: linear-gradient(
+    135deg,
+    var(--sc1) 0%,
+    var(--sc2) 14%,
+    var(--sc3) 29%,
+    var(--sc4) 43%,
+    var(--sc5) 57%,
+    var(--sc6) 71%,
+    var(--sc7) 86%,
+    var(--sc8) 100%
+  );
+  background-size: 400% 400%;
+  animation: bg-gradient 10s ease infinite;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem 1.5rem;
+  position: relative;
+}
+
+/* Microphone watermark — diamond pattern drifting diagonally */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  opacity: 0.2;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='black' transform='translate(28 15) scale(2)' d='M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='black' transform='translate(28 15) scale(2)' d='M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z'/%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  background-position: 0 0, 50px 50px;
+  animation: mic-drift 15s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes bg-gradient {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+@keyframes mic-drift {
+  0%   { background-position: 0 0, 50px 50px; }
+  100% { background-position: 100px 100px, 150px 150px; }
 }
 
 /* ── Display page ─────────────────────────────────────────────────────────── */
@@ -27,49 +72,56 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.25rem;
   text-align: center;
-  max-width: 520px;
+  max-width: 800px;
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .logo {
-  font-size: clamp(3rem, 10vw, 5rem);
+  font-size: clamp(2.5rem, 8vw, 8rem);
   line-height: 1;
-  filter: drop-shadow(0 0 24px rgba(76,201,240,0.5));
+  filter: drop-shadow(0 0 16px rgba(255,255,255,0.45));
 }
 
 .heading {
-  font-size: clamp(2.2rem, 9vw, 4.5rem);
+  font-size: clamp(2rem, 6vw, 6rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
+  color: var(--scq-heading-color, #ffffff);
+  -webkit-text-stroke: var(--scq-heading-stroke, 0px transparent);
+  paint-order: stroke fill;
 }
 
 .sub {
-  font-size: clamp(0.95rem, 3vw, 1.25rem);
-  color: var(--muted);
+  font-size: clamp(1rem, 3vw, 2.5rem);
+  color: var(--scq-sub-color, #ffffff);
   line-height: 1.55;
+  -webkit-text-stroke: var(--scq-sub-stroke, 0px transparent);
+  paint-order: stroke fill;
 }
 
 /* ── QR card ──────────────────────────────────────────────────────────────── */
 
 .qr-card {
   background: #fff;
-  border-radius: 24px;
-  padding: 18px;
-  animation: glow-pulse 3s ease-in-out infinite;
+  border-radius: 20px;
+  padding: 14px;
+  animation: qr-glow 3s ease-in-out infinite;
 }
 
-@keyframes glow-pulse {
-  0%,  100% { box-shadow: 0 0 40px rgba(76,201,240,0.20); }
-  50%        { box-shadow: 0 0 80px rgba(76,201,240,0.50); }
+@keyframes qr-glow {
+  0%, 100% { box-shadow: 0 0 40px rgba(255,255,255,0.20); }
+  50%       { box-shadow: 0 0 80px rgba(255,255,255,0.50); }
 }
 
 .qr-img {
   display: block;
-  width:  min(300px, 75vw);
-  height: min(300px, 75vw);
+  width:  min(560px, 65vw);
+  height: min(560px, 65vw);
   image-rendering: pixelated;
 }
 
@@ -77,8 +129,7 @@ body {
 .qr-img:not([src]), .qr-img[src=""] {
   background: linear-gradient(90deg, #e0e0e0 25%, #f5f5f5 50%, #e0e0e0 75%);
   background-size: 200% 100%;
-  animation: glow-pulse 3s ease-in-out infinite,
-             shimmer 1.4s linear infinite;
+  animation: shimmer 1.4s linear infinite;
 }
 
 @keyframes shimmer {
@@ -90,16 +141,12 @@ body {
 
 .url-pill {
   display: none;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
-  font-size: clamp(0.65rem, 2vw, 0.8rem);
+  font-size: clamp(0.6rem, 1.2vw, 1.6rem);
   font-family: 'Courier New', monospace;
-  color: var(--muted);
+  color: rgba(255,255,255,0.65);
   word-break: break-all;
-  max-width: 100%;
-  opacity: 0.7;
+  max-width: min(560px, 65vw);
+  text-align: center;
 }
 
 /* ── Fullscreen button (matches player page exactly) ─────────────────────── */

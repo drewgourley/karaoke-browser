@@ -43,6 +43,20 @@ const dmUnbanBtn         = document.getElementById('dm-unban-btn');
 const dmUnblockBtn       = document.getElementById('dm-unblock-btn');
 const reqLinkBtn         = document.getElementById('req-link-btn');
 const kioskLinkBtn       = document.getElementById('kiosk-link-btn');
+const standbySettingsBtn   = document.getElementById('standby-settings-btn');
+const standbySettingsModal = document.getElementById('standby-settings-modal');
+const ssTitle              = document.getElementById('ss-title');
+const ssSubtitle           = document.getElementById('ss-subtitle');
+const ssColor1             = document.getElementById('ss-color1');
+const ssColor2             = document.getElementById('ss-color2');
+const ssColor3             = document.getElementById('ss-color3');
+const ssColor4             = document.getElementById('ss-color4');
+const ssColor5             = document.getElementById('ss-color5');
+const ssColor6             = document.getElementById('ss-color6');
+const ssColor7             = document.getElementById('ss-color7');
+const ssColor8             = document.getElementById('ss-color8');
+const ssSave               = document.getElementById('ss-save');
+const ssCancel             = document.getElementById('ss-cancel');
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let ws;
 
@@ -73,6 +87,16 @@ function connect() {
       playerUpBadge.hidden  = !state.playerConnected;
       // Sync mode toggle pill position.
       if (reqModeBtn) reqModeBtn.dataset.mode = state.requestMode || 'kiosk';
+      // Sync player mode toggle.
+      const playerModeToggle = document.getElementById('player-mode-toggle');
+      if (playerModeToggle) {
+        const pm = state.playerMode || 'karaoke';
+        playerModeToggle.dataset.mode = pm;
+        const standbyOpt = document.getElementById('pmt-standby');
+        const karaokeOpt = document.getElementById('pmt-karaoke');
+        if (standbyOpt) standbyOpt.classList.toggle('pmt-active', pm === 'standby');
+        if (karaokeOpt) karaokeOpt.classList.toggle('pmt-active', pm !== 'standby');
+      }
       // Show "Unblock all" only when in crowd mode with waiting devices.
       if (reqClearBlockedBtn) {
         reqClearBlockedBtn.hidden = !(state.requestMode === 'crowd' && state.blockedCount > 0);
@@ -141,14 +165,14 @@ function render() {
 function renderNP() {
   const np = state.nowPlaying;
   requeueBtn.hidden   = !(np && !np.embedFailed && state.queue.length > 0);
-  requeueBtn.disabled = !state.playerConnected;
+  requeueBtn.disabled = !state.playerConnected || state.playerMode === 'standby';
   if (!np) {
     npEl.innerHTML = '<span class="np-idle">Nothing playing</span>';
     return;
   }
 
   if (np.embedFailed) {
-    const dis = state.playerConnected ? '' : ' disabled';
+    const dis = (state.playerConnected && state.playerMode !== 'standby') ? '' : ' disabled';
     npEl.innerHTML =
       '<div class="embed-warn">' +
         '<div class="embed-warn-title">⚠️ ' + esc(np.title) + '</div>' +
@@ -164,7 +188,8 @@ function renderNP() {
 
   const isPaused   = !!state.paused;
   const playerOn   = !!state.playerConnected;
-  const dis        = playerOn ? '' : ' disabled';
+  const isStandby  = state.playerMode === 'standby';
+  const dis        = (playerOn && !isStandby) ? '' : ' disabled';
   npEl.innerHTML =
     '<div class="np-wrap">' +
       '<img class="np-thumb" src="' + thumb(np.videoId) + '" alt="">' +
@@ -341,6 +366,7 @@ fetchBtn.addEventListener('click', () => fetchTitle(urlInput.value.trim()));
 // ── Search ────────────────────────────────────────────────────────────────
 const tabSearch     = document.getElementById('tab-search');
 const tabUrl        = document.getElementById('tab-url');
+const findTabToggle = document.getElementById('find-tab-toggle');
 const panelSearch   = document.getElementById('panel-search');
 const panelUrl      = document.getElementById('panel-url');
 const searchInput   = document.getElementById('search-input');
@@ -350,12 +376,12 @@ const searchResults = document.getElementById('search-results');
 let lastSearchResults = [];
 
 tabSearch.addEventListener('click', () => {
-  tabSearch.classList.add('active');    tabUrl.classList.remove('active');
+  findTabToggle.dataset.tab = 'search';
   panelSearch.style.display = '';       panelUrl.style.display = 'none';
   searchInput.focus();
 });
 tabUrl.addEventListener('click', () => {
-  tabUrl.classList.add('active');       tabSearch.classList.remove('active');
+  findTabToggle.dataset.tab = 'url';
   panelUrl.style.display = '';          panelSearch.style.display = 'none';
   urlInput.focus();
 });
@@ -565,6 +591,7 @@ const mxTrackCount      = document.getElementById('standby-track-count');
 const mxClearStandbyBtn = document.getElementById('clear-standby-btn');
 const mxTabSearch       = document.getElementById('mx-tab-search');
 const mxTabUrl          = document.getElementById('mx-tab-url');
+const mxFindTabToggle   = document.getElementById('mx-find-tab-toggle');
 const mxPanelSearch     = document.getElementById('mx-panel-search');
 const mxPanelUrl        = document.getElementById('mx-panel-url');
 const mxUrlInput        = document.getElementById('mx-url-input');
@@ -683,12 +710,12 @@ document.addEventListener('touchend', () => {
 
 // ── Mixer tabs ───────────────────────────────────────────────────────────
 mxTabSearch.addEventListener('click', () => {
-  mxTabSearch.classList.add('active');  mxTabUrl.classList.remove('active');
+  mxFindTabToggle.dataset.tab = 'search';
   mxPanelSearch.style.display = '';    mxPanelUrl.style.display = 'none';
   mxSearchInput.focus();
 });
 mxTabUrl.addEventListener('click', () => {
-  mxTabUrl.classList.add('active');    mxTabSearch.classList.remove('active');
+  mxFindTabToggle.dataset.tab = 'url';
   mxPanelUrl.style.display = '';       mxPanelSearch.style.display = 'none';
   mxUrlInput.focus();
 });
@@ -913,4 +940,104 @@ dmResetBtn.addEventListener('click',  () => send({ type: 'reset-requester-presen
 dmUnbanBtn.addEventListener('click',  () => send({ type: 'unban-all-devices' }));
 dmUnblockBtn.addEventListener('click', () => send({ type: 'clear-blocked-devices' }));
 requeueBtn.addEventListener('click', () => send({ type: 'requeue' }));
+
+// ── Player mode toggle ────────────────────────────────────────────────────
+document.getElementById('pmt-standby').addEventListener('click', () => send({ type: 'set-player-mode', mode: 'standby' }));
+document.getElementById('pmt-karaoke').addEventListener('click', () => send({ type: 'set-player-mode', mode: 'karaoke' }));
+
+// ── Standby settings modal ────────────────────────────────────────────────
+function parseFont(v) {
+  if (!v) return { family: '', weight: '' };
+  const sep = v.indexOf('|');
+  return sep === -1 ? { family: v, weight: '' } : { family: v.slice(0, sep), weight: v.slice(sep + 1) };
+}
+
+function updatePreviews() {
+  const titlePrev = document.getElementById('ss-title-preview-text');
+  if (titlePrev) {
+    titlePrev.textContent            = ssTitle.value.trim() || 'Karaoke Browser';
+    const tf = parseFont(document.getElementById('ss-title-font').value);
+    titlePrev.style.fontFamily       = tf.family;
+    titlePrev.style.fontWeight       = tf.weight;
+    const tSz                        = parseInt(document.getElementById('ss-title-size').value) || 0;
+    titlePrev.style.fontSize         = tSz > 0 ? Math.min(tSz, 48) + 'px' : '2rem';
+    titlePrev.style.color            = document.getElementById('ss-title-color').value   || '#ffffff';
+    const tOSz                       = parseInt(document.getElementById('ss-title-outline-size').value) || 0;
+    const tOCol                      = document.getElementById('ss-title-outline').value || '#000000';
+    titlePrev.style.webkitTextStroke = tOSz > 0 ? `${Math.min(tOSz, 6)}px ${tOCol}` : '';
+  }
+  const subPrev = document.getElementById('ss-subtitle-preview-text');
+  if (subPrev) {
+    subPrev.textContent            = ssSubtitle.value.trim() || 'Your karaoke night command center';
+    const sf = parseFont(document.getElementById('ss-subtitle-font').value);
+    subPrev.style.fontFamily       = sf.family;
+    subPrev.style.fontWeight       = sf.weight;
+    const sSz                      = parseInt(document.getElementById('ss-subtitle-size').value) || 0;
+    subPrev.style.fontSize         = sSz > 0 ? Math.min(sSz, 36) + 'px' : '1.5rem';
+    subPrev.style.color            = document.getElementById('ss-subtitle-color').value   || '#ffffff';
+    const sOSz                     = parseInt(document.getElementById('ss-subtitle-outline-size').value) || 0;
+    const sOCol                    = document.getElementById('ss-subtitle-outline').value || '#000000';
+    subPrev.style.webkitTextStroke = sOSz > 0 ? `${Math.min(sOSz, 4)}px ${sOCol}` : '';
+  }
+  ['ss-preview-bg-title', 'ss-preview-bg-subtitle'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      [ssColor1,ssColor2,ssColor3,ssColor4,ssColor5,ssColor6,ssColor7,ssColor8]
+        .forEach((c, i) => el.style.setProperty(`--sc${i + 1}`, c.value));
+    }
+  });
+}
+
+standbySettingsBtn.addEventListener('click', () => {
+  ssTitle.value    = state.standbyTitle    || 'Karaoke Browser';
+  ssSubtitle.value = state.standbySubtitle ?? 'Your karaoke night command center';
+  const defs = ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'];
+  const colors = state.standbyColors || defs;
+  [ssColor1,ssColor2,ssColor3,ssColor4,ssColor5,ssColor6,ssColor7,ssColor8]
+    .forEach((el, i) => { el.value = colors[i] || defs[i]; });
+  document.getElementById('ss-title-color').value           = state.standbyTitleColor         || '#ffffff';
+  document.getElementById('ss-title-outline').value         = state.standbyTitleOutline       || '#000000';
+  document.getElementById('ss-title-font').value            = state.standbyTitleFont          || '';
+  document.getElementById('ss-title-size').value            = state.standbyTitleSize          || '';
+  document.getElementById('ss-title-outline-size').value    = state.standbyTitleOutlineSize   ?? 3;
+  document.getElementById('ss-subtitle-color').value        = state.standbySubtitleColor      || '#ffffff';
+  document.getElementById('ss-subtitle-outline').value      = state.standbySubtitleOutline    || '#000000';
+  document.getElementById('ss-subtitle-font').value         = state.standbySubtitleFont       || '';
+  document.getElementById('ss-subtitle-size').value         = state.standbySubtitleSize       || '';
+  document.getElementById('ss-subtitle-outline-size').value = state.standbySubtitleOutlineSize ?? 2;
+  updatePreviews();
+  standbySettingsModal.hidden = false;
+});
+ssSave.addEventListener('click', () => {
+  send({
+    type:    'set-standby-settings',
+    title:    ssTitle.value.trim().slice(0, 80),
+    subtitle: ssSubtitle.value.trim().slice(0, 120),
+    colors:   [ssColor1.value, ssColor2.value, ssColor3.value, ssColor4.value, ssColor5.value, ssColor6.value, ssColor7.value, ssColor8.value],
+    titleColor:          document.getElementById('ss-title-color').value,
+    titleOutline:        document.getElementById('ss-title-outline').value,
+    titleFont:           document.getElementById('ss-title-font').value,
+    titleSize:           parseInt(document.getElementById('ss-title-size').value)           || 0,
+    titleOutlineSize:    parseInt(document.getElementById('ss-title-outline-size').value)   || 0,
+    subtitleColor:       document.getElementById('ss-subtitle-color').value,
+    subtitleOutline:     document.getElementById('ss-subtitle-outline').value,
+    subtitleFont:        document.getElementById('ss-subtitle-font').value,
+    subtitleSize:        parseInt(document.getElementById('ss-subtitle-size').value)        || 0,
+    subtitleOutlineSize: parseInt(document.getElementById('ss-subtitle-outline-size').value) || 0,
+  });
+  standbySettingsModal.hidden = true;
+});
+ssCancel.addEventListener('click', () => { standbySettingsModal.hidden = true; });
+standbySettingsModal.addEventListener('click', e => { if (e.target === standbySettingsModal) standbySettingsModal.hidden = true; });
+ssTitle.addEventListener('keydown',    e => { if (e.key === 'Enter') ssSave.click(); });
+ssSubtitle.addEventListener('keydown', e => { if (e.key === 'Enter') ssSave.click(); });
+
+// Live preview wiring
+['ss-title', 'ss-title-font', 'ss-title-size', 'ss-title-outline-size', 'ss-title-color', 'ss-title-outline',
+ 'ss-subtitle', 'ss-subtitle-font', 'ss-subtitle-size', 'ss-subtitle-outline-size', 'ss-subtitle-color', 'ss-subtitle-outline',
+ 'ss-color1', 'ss-color2', 'ss-color3', 'ss-color4', 'ss-color5', 'ss-color6', 'ss-color7', 'ss-color8'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updatePreviews);
+});
+
 connect();

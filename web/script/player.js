@@ -22,6 +22,7 @@ let controllerReady = false;
 let hideSlateTimer = null;
 let requestMode   = null;
 let slateQrLoaded = false;
+let playerMode    = 'karaoke';
 
 // ── Standby music player ───────────────────────────────────────────────────
 let standbyPlayer     = null;
@@ -266,6 +267,56 @@ function applySlateQR() {
   if (crowd) loadSlateQR();
 }
 
+function parseFont(v) {
+  if (!v) return { family: '', weight: '' };
+  const sep = v.indexOf('|');
+  return sep === -1 ? { family: v, weight: '' } : { family: v.slice(0, sep), weight: v.slice(sep + 1) };
+}
+
+function updateStandbyDisplay(msg) {
+  const titleEl    = document.getElementById('standby-title-el');
+  const subtitleEl = document.getElementById('standby-subtitle-el');
+  const bgEl       = document.getElementById('standby-bg');
+  if (titleEl) {
+    titleEl.textContent            = msg.standbyTitle        || 'Karaoke Browser';
+    titleEl.style.color            = msg.standbyTitleColor   || '#ffffff';
+    const tf = parseFont(msg.standbyTitleFont || '');
+    titleEl.style.fontFamily       = tf.family;
+    titleEl.style.fontWeight       = tf.weight;
+    titleEl.style.fontSize         = (msg.standbyTitleSize > 0) ? msg.standbyTitleSize + 'px' : '';
+    const tSz  = msg.standbyTitleOutlineSize ?? 20;
+    const tCol = msg.standbyTitleOutline     || '#000000';
+    titleEl.style.webkitTextStroke = tSz > 0 ? `${tSz}px ${tCol}` : '';
+    const root = document.documentElement;
+    root.style.setProperty('--scq-heading-color',  msg.standbyTitleColor || '#ffffff');
+    root.style.setProperty('--scq-heading-stroke', tSz > 0 ? `${Math.ceil(tSz / 2)}px ${tCol}` : '0px transparent');
+  }
+  if (subtitleEl) {
+    subtitleEl.textContent            = msg.standbySubtitle      || 'Your karaoke night command center';
+    subtitleEl.hidden                 = msg.standbySubtitle === ''
+    subtitleEl.style.color            = msg.standbySubtitleColor || '#ffffff';
+    const sf = parseFont(msg.standbySubtitleFont || '');
+    subtitleEl.style.fontFamily       = sf.family;
+    subtitleEl.style.fontWeight       = sf.weight;
+    subtitleEl.style.fontSize         = (msg.standbySubtitleSize > 0) ? msg.standbySubtitleSize + 'px' : '';
+    const sSz  = msg.standbySubtitleOutlineSize ?? 8;
+    const sCol = msg.standbySubtitleOutline      || '#000000';
+    subtitleEl.style.webkitTextStroke = sSz > 0 ? `${sSz}px ${sCol}` : '';
+    const root2 = document.documentElement;
+    root2.style.setProperty('--scq-sub-color',  msg.standbySubtitleColor || '#ffffff');
+    root2.style.setProperty('--scq-sub-stroke', sSz > 0 ? `${Math.ceil(sSz / 2)}px ${sCol}` : '0px transparent');
+  }
+  if (bgEl && Array.isArray(msg.standbyColors)) {
+    const c = msg.standbyColors;
+    const defs = ['#4cc9f0', '#4361ee', '#7c3aed', '#f72585', '#ff6b35', '#ffd166', '#06d6a0', '#3a0ca3'];
+    for (let i = 1; i <= 8; i++) {
+      const val = c[i - 1] || defs[i - 1];
+      bgEl.style.setProperty(`--sc${i}`, val);
+      document.documentElement.style.setProperty(`--sc${i}`, val);
+    }
+  }
+}
+
 function showEmbedError(videoId) {
   embedFailed = true;
   shouldPauseOnPlay = false;
@@ -446,7 +497,23 @@ function connect() {
         else stopStandby();
       }
 
-      if (msg.nowPlaying) {
+      playerMode = msg.playerMode || 'karaoke';
+      updateStandbyDisplay(msg);
+
+      if (playerMode === 'standby') {
+        // Locked to standby slate — stop any active karaoke video.
+        if (currentVideoId) {
+          if (ytPlayer && typeof ytPlayer.stopVideo === 'function') ytPlayer.stopVideo();
+          currentVideoId    = null;
+          embedFailed       = false;
+          shouldPauseOnPlay = false;
+          showingSlate      = false;
+          hideSlate(null);
+          document.getElementById('embed-error').style.display = 'none';
+        }
+        const idleEl = document.getElementById('idle');
+        if (!idleEl.style.display || idleEl.style.display === 'none') showIdle();
+      } else if (msg.nowPlaying) {
         currentTitle  = msg.nowPlaying.title  || '';
         currentSinger = msg.nowPlaying.singer || '';
         if (msg.nowPlaying.videoId !== currentVideoId) {
