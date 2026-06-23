@@ -167,6 +167,7 @@ function showRoomLinks() {
   // Set mode toggle to reflect current session mode.
   if (reqModeToggle) reqModeToggle.dataset.mode = currentMode;
   updateLinkLabel(currentMode);
+  connectIngressWs();
   // Fetch and cache the request QR code into the modal img.
   fetch('/api/qr?s=' + encodeURIComponent(currentSessionId) + '&data=' + encodeURIComponent(requestUrl))
     .then(r => r.json())
@@ -273,6 +274,33 @@ copyDisplayBtn.addEventListener('click', () => {
     setTimeout(() => { copyDisplayBtn.textContent = orig; }, 2000);
   }).catch(() => { displayUrlInput.select(); });
 });
+
+// ── Live mode sync via WebSocket ───────────────────────────────────────────
+// Connects after a session is established so the toggle reflects controller
+// changes without requiring a page refresh.
+let ingressWs = null;
+let ingressReconnectTimer = null;
+
+function connectIngressWs() {
+  if (!currentSessionId) return;
+  clearTimeout(ingressReconnectTimer);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ingressWs = new WebSocket(proto + '//' + location.host + '/?s=' + encodeURIComponent(currentSessionId) + '&role=ingress');
+  ingressWs.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'state' && msg.requestMode && msg.requestMode !== currentMode) {
+        currentMode = msg.requestMode;
+        saveSessionToStorage();
+        if (reqModeToggle) reqModeToggle.dataset.mode = currentMode;
+        updateLinkLabel(currentMode);
+      }
+    } catch { /* ignore */ }
+  };
+  ingressWs.onclose = () => {
+    ingressReconnectTimer = setTimeout(connectIngressWs, 3000);
+  };
+}
 
 // ── Mode toggle ────────────────────────────────────────────────────────────
 if (reqModeToggle) {
