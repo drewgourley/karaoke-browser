@@ -309,16 +309,9 @@ function showIdle() {
   shouldPauseOnPlay = false;
   showingSlate = false;
   hideSlate(null);
-  // If the controller was lost during a track, surface the gate now that
-  // we're between songs and it's safe to show it.
-  // Don't interrupt standby mode — the show is already running.
-  if (userActivated && !controllerReady && playerMode !== 'standby') {
-    const gate = document.getElementById('start-gate');
-    if (gate && gate.style.display === 'none') {
-      gate.style.display = 'flex';
-      gate.classList.remove('fading');
-    }
-  }
+  // currentVideoId is now null — re-evaluate gate in case the controller
+  // was lost while a song was playing and we couldn't show it until now.
+  maybeShowGate();
   if (userActivated) {
     if (pendingPlaylistId) {
       const pid = pendingPlaylistId;
@@ -377,6 +370,20 @@ function stopStandby() {
 
 // ── Gate status ──────────────────────────────────────────────────────────────
 
+// Single source of truth for showing the gate. Shows it only when:
+//   • the user has activated the player (gate has been seen before)
+//   • no controller is connected
+//   • no karaoke video is playing (don't interrupt a live song)
+//   • not in standby mode (show is already running; don't break it)
+function maybeShowGate() {
+  if (!userActivated || controllerReady || currentVideoId || playerMode === 'standby') return;
+  const gate = document.getElementById('start-gate');
+  if (gate && gate.style.display === 'none') {
+    gate.style.display = 'flex';
+    gate.classList.remove('fading');
+  }
+}
+
 function updateGateStatus(controllerConnected) {
   const gate    = document.getElementById('start-gate');
   const dot     = document.getElementById('gate-controller-dot');
@@ -390,14 +397,9 @@ function updateGateStatus(controllerConnected) {
   gate.classList.toggle('gate-ready', !!controllerConnected);
 
   if (userActivated) {
-    if (!controllerConnected && gate.style.display === 'none') {
-      // Controller dropped after gate was dismissed. Only bring it back if
-      // we're between tracks — don't interrupt a live karaoke song.
-      if (!currentVideoId) {
-        gate.style.display = 'flex';
-        gate.classList.remove('fading');
-      }
-    } else if (controllerConnected && gate.style.display !== 'none') {
+    if (!controllerConnected) {
+      maybeShowGate();
+    } else if (gate.style.display !== 'none') {
       // Controller reconnected — auto-dismiss the gate.
       gate.classList.add('fading');
       setTimeout(() => { gate.style.display = 'none'; }, 450);

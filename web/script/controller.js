@@ -609,28 +609,54 @@ const mxSearchInput     = document.getElementById('mx-search-input');
 const mxSearchBtn       = document.getElementById('mx-search-btn');
 const mxSearchStatus    = document.getElementById('mx-search-status');
 const mxSearchResults   = document.getElementById('mx-search-results');
-// VU meter elements
-const vuMeter  = document.getElementById('mic-vu-meter');
-const vuFill   = document.getElementById('mic-vu-fill');
-const vuPeakEl = document.getElementById('mic-vu-peak');
-let vuPeak = 0, vuPeakTimer = null, vuDecayTimer = null;
+// VU meter — LED dot array
+const vuMeter = document.getElementById('mic-vu-meter');
+const VU_DOTS = 20; // 15 green (75%) + 4 yellow (20%) + 1 red (5%)
+const vuDots  = [];
+for (let i = 0; i < VU_DOTS; i++) {
+  const d = document.createElement('span');
+  d.className = 'vu-dot ' + (i < 15 ? 'vu-green' : i < 19 ? 'vu-yellow' : 'vu-red');
+  vuMeter.appendChild(d);
+  vuDots.push(d);
+}
+let vuLevel = -1, vuPeak = -1;
+let vuPeakHoldTimer = null, vuPeakDecayTimer = null, vuFillDecayTimer = null;
+
+function renderVu() {
+  for (let i = 0; i < VU_DOTS; i++) {
+    const fill = i <= vuLevel;
+    const peak = i === vuPeak && vuPeak > vuLevel;
+    vuDots[i].classList.toggle('lit',  fill || peak);
+    vuDots[i].classList.toggle('peak', peak);
+  }
+}
+
+function startPeakDecay() {
+  vuPeakDecayTimer = setInterval(() => {
+    if (vuPeak <= vuLevel || vuPeak < 0) {
+      clearInterval(vuPeakDecayTimer);
+      vuPeakDecayTimer = null;
+      return;
+    }
+    vuPeak--;
+    renderVu();
+  }, 60);
+}
 
 function setVuLevel(level) {
-  const pct = Math.max(0, Math.min(100, level));
-  vuFill.style.width = pct + '%';
-  if (pct >= vuPeak) {
-    vuPeak = pct;
-    vuPeakEl.style.left = Math.max(0, pct - 1.5) + '%';
-    vuPeakEl.style.opacity = '0.9';
-    clearTimeout(vuPeakTimer);
-    vuPeakTimer = setTimeout(() => { vuPeak = 0; vuPeakEl.style.opacity = '0'; }, 1200);
+  const idx = level <= 0 ? -1
+    : Math.min(VU_DOTS - 1, Math.ceil((level / 100) * VU_DOTS) - 1);
+  vuLevel = idx;
+  if (idx > vuPeak) {
+    vuPeak = idx;
+    clearTimeout(vuPeakHoldTimer);
+    clearInterval(vuPeakDecayTimer);
+    vuPeakDecayTimer = null;
+    vuPeakHoldTimer = setTimeout(startPeakDecay, 1200);
   }
-  vuMeter.classList.toggle('vu-clip', pct >= 92);
-  clearTimeout(vuDecayTimer);
-  vuDecayTimer = setTimeout(() => {
-    vuFill.style.width = '0%';
-    vuMeter.classList.remove('vu-clip');
-  }, 300);
+  clearTimeout(vuFillDecayTimer);
+  vuFillDecayTimer = setTimeout(() => { vuLevel = -1; renderVu(); }, 300);
+  renderVu();
 }
 
 const MX_HANDLE_H  = 40;
@@ -647,6 +673,15 @@ let micMuted      = false;
 
 function applyMicGain() {
   if (micGain) micGain.gain.value = micMuted ? 0 : micTargetVol / 100;
+  if (micMuted) clearVu();
+}
+
+function clearVu() {
+  clearTimeout(vuPeakHoldTimer);  clearInterval(vuPeakDecayTimer);
+  clearTimeout(vuFillDecayTimer);
+  vuPeakHoldTimer = null;  vuPeakDecayTimer = null;  vuFillDecayTimer = null;
+  vuLevel = -1;  vuPeak = -1;
+  renderVu();
 }
 
 function stopMicLevel() {
@@ -666,7 +701,7 @@ function startMicLevel() {
     const rms = Math.sqrt(sum / buf.length);
     const db = rms > 0.0001 ? 20 * Math.log10(rms) : -100;
     const level = Math.round(Math.max(0, Math.min(100, (db + 60) / 60 * 100)));
-    if (vuFill) setVuLevel(level);
+    setVuLevel(level);
   }, 50);
 }
 

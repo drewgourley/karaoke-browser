@@ -809,48 +809,32 @@ a.btn:hover { filter: brightness(1.2); }
   padding: 0.3rem 0;
 }
 
-/* VU Meter */
+/* VU Meter — LED dot array */
 .vu-meter {
-  position: relative;
+  display: flex;
+  gap: 2px;
+  align-items: center;
   width: 100%;
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.06);
-  overflow: visible;
+  height: 10px;
   margin: 0.1rem 0;
 }
-.vu-fill {
-  height: 100%;
-  border-radius: 4px;
-  width: 0%;
-  background: linear-gradient(
-    to right,
-    #22c55e  0%,
-    #86efac 55%,
-    #fbbf24 70%,
-    #f97316 85%,
-    #ef4444 100%
-  );
-  background-size: 100% 100%;
-  background-clip: content-box;
-  transition: width 0.04s linear;
-  will-change: width;
-}
-.vu-peak {
-  position: absolute;
-  top: -1px;
-  width: 3px;
-  height: calc(100% + 2px);
+/* Off states — dark tint per zone, like an unlit LED */
+.vu-dot {
+  flex: 1;
+  height: 8px;
   border-radius: 2px;
-  background: #fff;
-  opacity: 0.9;
-  left: 0%;
-  transition: left 0.1s ease-out, opacity 0.4s ease;
-  pointer-events: none;
 }
-.vu-meter.vu-clip .vu-fill {
-  box-shadow: 0 0 6px #ef4444;
-}
+.vu-dot.vu-green  { background: #0b2214; }
+.vu-dot.vu-yellow { background: #1f1900; }
+.vu-dot.vu-red    { background: #220404; }
+/* Lit states */
+.vu-dot.vu-green.lit  { background: #22c55e; }
+.vu-dot.vu-yellow.lit { background: #fbbf24; }
+.vu-dot.vu-red.lit    { background: #ef4444; }
+/* Peak-hold dot — slightly brighter with a halo */
+.vu-dot.vu-green.lit.peak  { background: #4ade80; box-shadow: 0 0 5px #22c55e; }
+.vu-dot.vu-yellow.lit.peak { background: #fde047; box-shadow: 0 0 5px #fbbf24; }
+.vu-dot.vu-red.lit.peak    { background: #f87171; box-shadow: 0 0 5px #ef4444; }
 
 /* Mic fader */
 .fader-mic-label {
