@@ -33,37 +33,6 @@ let standbyTargetVol  = 75;   // updated from state
 let videoTargetVol    = 100;  // updated from state
 let fadeDurationMs    = 1500; // updated from state
 
-// ── Microphone ─────────────────────────────────────────────────────────────
-let micContext    = null; // AudioContext
-let micGain       = null; // GainNode
-let micStream     = null; // MediaStream
-let micTargetVol  = 80;   // 0-100, updated from state
-let micMuted      = false; // updated from state
-
-function applyMicGain() {
-  if (micGain) micGain.gain.value = micMuted ? 0 : micTargetVol / 100;
-}
-
-async function initMic() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-    });
-    const source = micContext.createMediaStreamSource(stream);
-    micGain = micContext.createGain();
-    applyMicGain();
-    source.connect(micGain);
-    micGain.connect(micContext.destination);
-    micStream = stream;
-    if (ws && ws.readyState === WebSocket.OPEN)
-      ws.send(JSON.stringify({ type: 'mic-status', ready: true }));
-  } catch (err) {
-    console.warn('[Mic] getUserMedia failed:', err.name);
-    if (ws && ws.readyState === WebSocket.OPEN)
-      ws.send(JSON.stringify({ type: 'mic-status', ready: false, reason: err.name }));
-  }
-}
-
 // ── Start gate — one tap unlocks autoplay for the session ──────────────────
 document.getElementById('start-gate').addEventListener('click', () => {
   if (!controllerReady) return; // not tappable until a controller is connected
@@ -82,11 +51,6 @@ document.getElementById('start-gate').addEventListener('click', () => {
       loadStandbyPlaylist(pid);
     } else if (currentPlaylistId) {
       fadeStandbyVolume(standbyTargetVol);
-    }
-    // Initialise microphone in user-gesture context so AudioContext can start.
-    if (!micContext && (window.AudioContext || window.webkitAudioContext)) {
-      micContext = new (window.AudioContext || window.webkitAudioContext)();
-      initMic();
     }
   }
   // Dismiss the gate whether this is the first tap or a recovery tap.
@@ -132,7 +96,10 @@ window.onYouTubeIframeAPIReady = function () {
           showSlate();
         }
         if (e.data === YT.PlayerState.ENDED) {
-          ws.send(JSON.stringify({ type: 'video-ended' }));
+          // Guard: only report ended when we actually own a playing video.
+          // stopVideo() can fire ENDED asynchronously; by the time it arrives
+          // currentVideoId will already be null if we called it during cleanup.
+          if (currentVideoId) ws.send(JSON.stringify({ type: 'video-ended' }));
         }
       },
       onError: function (e) {
@@ -331,6 +298,12 @@ function showEmbedError(videoId) {
 }
 
 function showIdle() {
+  // Stop any active karaoke video before clearing state so the ENDED event
+  // (which fires asynchronously) sees currentVideoId already null and skips
+  // sending video-ended to the server.
+  if (currentVideoId && ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+    ytPlayer.stopVideo();
+  }
   currentVideoId = null;
   embedFailed = false;
   shouldPauseOnPlay = false;
@@ -338,7 +311,8 @@ function showIdle() {
   hideSlate(null);
   // If the controller was lost during a track, surface the gate now that
   // we're between songs and it's safe to show it.
-  if (userActivated && !controllerReady) {
+  // Don't interrupt standby mode — the show is already running.
+  if (userActivated && !controllerReady && playerMode !== 'standby') {
     const gate = document.getElementById('start-gate');
     if (gate && gate.style.display === 'none') {
       gate.style.display = 'flex';
@@ -358,9 +332,6 @@ function showIdle() {
   idle.style.display = idle.classList.contains('crowd') ? 'grid' : 'flex';
   requestAnimationFrame(() => requestAnimationFrame(() => idle.classList.add('visible')));
   document.getElementById('embed-error').style.display = 'none';
-  if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
-    ytPlayer.stopVideo();
-  }
 }
 
 // ── Standby music helpers ─────────────────────────────────────────────────────
@@ -486,10 +457,6 @@ function connect() {
       }
       if (typeof msg.fadeDuration   === 'number') fadeDurationMs   = msg.fadeDuration;
 
-      // Sync mic settings.
-      if (typeof msg.micVolume === 'number')  { micTargetVol = msg.micVolume; applyMicGain(); }
-      if (typeof msg.micMuted  === 'boolean') { micMuted = msg.micMuted;      applyMicGain(); }
-
       // Sync standby playlist.
       const incomingPlaylist = msg.standbyPlaylistId || null;
       if (incomingPlaylist !== currentPlaylistId) {
@@ -550,13 +517,8 @@ function connect() {
     setTimeout(connect, 3000);
   };
 
-  ws.onopen = function () {
-    // Report mic status on reconnect so the controller card stays accurate.
-    if (micStream) {
-      ws.send(JSON.stringify({ type: 'mic-status', ready: true }));
-    }
-  };
 }
+
 
 connect();
 

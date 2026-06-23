@@ -66,6 +66,7 @@ function connect() {
   ws.onopen = () => {
     dot.className = 'dot on';
     statusText.textContent = 'Controller';
+    initMic();
   };
   ws.onclose = (event) => {
     dot.className = 'dot off';
@@ -88,11 +89,6 @@ function connect() {
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === 'mic-status') {
-      micReady = msg.ready;
-      renderMixer();
-      return;
-    }
     if (msg.type === 'state') {
       state = msg;
       render();
@@ -613,9 +609,93 @@ const mxSearchInput     = document.getElementById('mx-search-input');
 const mxSearchBtn       = document.getElementById('mx-search-btn');
 const mxSearchStatus    = document.getElementById('mx-search-status');
 const mxSearchResults   = document.getElementById('mx-search-results');
+// VU meter elements
+const vuMeter  = document.getElementById('mic-vu-meter');
+const vuFill   = document.getElementById('mic-vu-fill');
+const vuPeakEl = document.getElementById('mic-vu-peak');
+let vuPeak = 0, vuPeakTimer = null, vuDecayTimer = null;
+
+function setVuLevel(level) {
+  const pct = Math.max(0, Math.min(100, level));
+  vuFill.style.width = pct + '%';
+  if (pct >= vuPeak) {
+    vuPeak = pct;
+    vuPeakEl.style.left = Math.max(0, pct - 1.5) + '%';
+    vuPeakEl.style.opacity = '0.9';
+    clearTimeout(vuPeakTimer);
+    vuPeakTimer = setTimeout(() => { vuPeak = 0; vuPeakEl.style.opacity = '0'; }, 1200);
+  }
+  vuMeter.classList.toggle('vu-clip', pct >= 92);
+  clearTimeout(vuDecayTimer);
+  vuDecayTimer = setTimeout(() => {
+    vuFill.style.width = '0%';
+    vuMeter.classList.remove('vu-clip');
+  }, 300);
+}
 
 const MX_HANDLE_H  = 40;
 let micReady = null; // null=unknown, true=ready, false=denied/unavailable
+
+// ── Microphone (owned by the controller window) ─────────────────────────
+let micContext    = null;
+let micGain       = null;
+let micStream     = null;
+let micAnalyser   = null;
+let micLevelTimer = null;
+let micTargetVol  = 80;
+let micMuted      = false;
+
+function applyMicGain() {
+  if (micGain) micGain.gain.value = micMuted ? 0 : micTargetVol / 100;
+}
+
+function stopMicLevel() {
+  if (micLevelTimer) { clearInterval(micLevelTimer); micLevelTimer = null; }
+}
+
+function startMicLevel() {
+  if (micLevelTimer || !micAnalyser) return;
+  const buf = new Uint8Array(micAnalyser.fftSize);
+  micLevelTimer = setInterval(() => {
+    micAnalyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / buf.length);
+    const db = rms > 0.0001 ? 20 * Math.log10(rms) : -100;
+    const level = Math.round(Math.max(0, Math.min(100, (db + 60) / 60 * 100)));
+    if (vuFill) setVuLevel(level);
+  }, 50);
+}
+
+async function initMic() {
+  if (micStream) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+    });
+    micContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = micContext.createMediaStreamSource(stream);
+    micGain = micContext.createGain();
+    micAnalyser = micContext.createAnalyser();
+    micAnalyser.fftSize = 256;
+    micAnalyser.smoothingTimeConstant = 0.75;
+    source.connect(micGain);
+    micGain.connect(micAnalyser);
+    micAnalyser.connect(micContext.destination);
+    micStream = stream;
+    applyMicGain();
+    startMicLevel();
+    micReady = true;
+    renderMixer();
+  } catch (err) {
+    console.warn('[Mic] getUserMedia failed:', err.name);
+    micReady = false;
+    renderMixer();
+  }
+}
 let mxLoadedPlaylistId = null; // playlist whose tracks are currently rendered
 const MX_DEFAULT_H = 320;
 let mxOpenHeight   = parseInt(localStorage.getItem('kk_mixer_h') || '0') || MX_DEFAULT_H;
@@ -738,23 +818,29 @@ function renderMixer() {
   if (document.activeElement !== mxStandbyVolSlider) {
     mxStandbyVolSlider.value = state.standbyVolume ?? 75;
     mxStandbyVolValue.textContent = mxStandbyVolSlider.value;
+    syncFaderPct(mxStandbyVolSlider);
   }
   if (document.activeElement !== mxVideoVolSlider) {
     mxVideoVolSlider.value = state.videoVolume ?? 100;
     mxVideoVolValue.textContent = mxVideoVolSlider.value;
+    syncFaderPct(mxVideoVolSlider);
   }
-  // Mic controls
+  // Mic controls — sync AudioContext gain from server state
+  micTargetVol = state.micVolume ?? 80;
+  micMuted = !!state.micMuted;
+  applyMicGain();
   const micActive = micReady === true;
   mxMicVolSlider.disabled = !micActive;
   mxMicMuteBtn.disabled   = !micActive;
   if (document.activeElement !== mxMicVolSlider) {
-    mxMicVolSlider.value = state.micVolume ?? 80;
+    mxMicVolSlider.value = micTargetVol;
     mxMicVolValue.textContent = mxMicVolSlider.value;
+    syncFaderPct(mxMicVolSlider);
   }
-  const muted = !!state.micMuted;
+  const muted = micMuted;
   mxMicMuteBtn.checked = !muted;
   mxMicDot.className = 'status-dot-sm' + (micActive && !muted ? ' on' : '');
-  mxMicHint.textContent = micReady === null ? 'Awaiting player…'
+  mxMicHint.textContent = micReady === null ? 'Initializing…'
     : micReady === false ? 'Permission denied or unavailable'
     : muted ? 'Muted' : 'Active';
 
@@ -805,10 +891,14 @@ function renderMixer() {
 }
 
 // ── Mixer slider handlers ─────────────────────────────────────────────────
+function syncFaderPct(slider) {
+  slider.style.setProperty('--pct', slider.value);
+}
 function mxMakeSlider(slider, valueEl, msgType, fmt) {
   let t = null;
   slider.addEventListener('input', () => {
     valueEl.textContent = fmt(slider.value);
+    syncFaderPct(slider);
     clearTimeout(t);
     t = setTimeout(() => send({ type: msgType, volume: Number(slider.value) }), 150);
   });
@@ -816,6 +906,10 @@ function mxMakeSlider(slider, valueEl, msgType, fmt) {
 mxMakeSlider(mxStandbyVolSlider, mxStandbyVolValue, 'set-standby-volume', v => v);
 mxMakeSlider(mxVideoVolSlider,   mxVideoVolValue,   'set-video-volume',   v => v);
 mxMakeSlider(mxMicVolSlider,     mxMicVolValue,     'set-mic-volume',     v => v);
+// Initialise pill fill on page load
+syncFaderPct(mxStandbyVolSlider);
+syncFaderPct(mxVideoVolSlider);
+syncFaderPct(mxMicVolSlider);
 
 mxMicMuteBtn.addEventListener('change', () => send({ type: 'mic-mute', muted: !mxMicMuteBtn.checked }));
 
@@ -1054,3 +1148,6 @@ ssSubtitle.addEventListener('keydown', e => { if (e.key === 'Enter') ssSave.clic
 });
 
 connect();
+// Ensure mic is initialized on the first user gesture if the attempt in
+// ws.onopen failed because the permission prompt requires a gesture.
+document.addEventListener('click', () => initMic(), { once: true });

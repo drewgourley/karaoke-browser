@@ -83,6 +83,7 @@ const searchLimiter = makeRateLimiter({
   max:       Number(process.env.SEARCH_RATE_MAX)        || 20,
 });
 
+
 // ── YouTube API key pool ───────────────────────────────────────────────────────────
 // Comma-separated list in YOUTUBE_API_KEYS. Keys are used round-robin and
 // retired automatically when the daily quota is hit (403); they revive at
@@ -457,6 +458,10 @@ async function broadcastState(sessionId) {
   const playerCount     = Math.max(Number(presenceArr[0]) || 0, liveLocal.player);
   const controllerCount = Math.max(Number(presenceArr[1]) || 0, liveLocal.controller);
   const requestCount    = Math.max(Number(presenceArr[2]) || 0, liveLocal.request);
+
+  if (controllerCount === 0) {
+    logger.warn(`broadcastState controllerConnected=false  redis=${presenceArr[1]}  liveLocal=${liveLocal.controller}  localSetSize=${localSet ? [...localSet].map(c => `${c.role}:${c.readyState}`).join(',') : 'none'}  session=${sid(sessionId)}`);
+  }
 
   await publishRaw(sessionId, {
     type:                 'state',
@@ -1337,13 +1342,6 @@ wss.on('connection', async (ws, req) => {
         break;
       }
 
-      case 'mic-status': {
-        if (role !== 'player') break;
-        // Relay status to all clients (controllers) without persisting.
-        await publishRaw(sessionId, { type: 'mic-status', ready: !!msg.ready, reason: msg.reason || null });
-        break;
-      }
-
       case 'standby-skip': {
         if (role !== 'controller' && role !== 'mixer') break;
         if (!session.standbyPlaylistId) break;
@@ -1405,7 +1403,40 @@ wss.on('connection', async (ws, req) => {
         break;
       }
 
+      case 'toggle-pause': {
+        if (!session.nowPlaying) break;
+        session.paused = !session.paused;
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
 
+      case 'standby-toggle-pause': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        if (!session.standbyPlaylistId) break;
+        session.standbyPaused = !session.standbyPaused;
+        await saveSession(sessionId, session);
+        await publishRaw(sessionId, { type: session.standbyPaused ? 'standby-pause' : 'standby-resume' });
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'player-mode': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        const newMode = msg.mode === 'standby' ? 'standby' : 'karaoke';
+        session.playerMode = newMode;
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
+
+      case 'toggle-player-mode': {
+        if (role !== 'controller' && role !== 'mixer') break;
+        session.playerMode = (session.playerMode === 'standby') ? 'karaoke' : 'standby';
+        await saveSession(sessionId, session);
+        await broadcastState(sessionId);
+        break;
+      }
 
       case 'ban-device': {
         // Controller only. Ban a device by its request ID — removes the request

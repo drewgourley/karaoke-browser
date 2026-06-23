@@ -735,13 +735,16 @@ a.btn:hover { filter: brightness(1.2); }
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface2);
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(
+    to right,
+    var(--fader-fill, var(--accent)) calc(var(--pct, 0) * 1%),
+    rgba(255,255,255,0.08) calc(var(--pct, 0) * 1%)
+  );
   outline: none;
-  accent-color: var(--accent);
   cursor: pointer;
-  margin: 0.2rem 0;
+  margin: 0.25rem 0;
 }
 .fader::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -749,18 +752,25 @@ a.btn:hover { filter: brightness(1.2); }
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #fff;
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(76,201,240,0.4);
+  box-shadow: 0 0 0 2.5px var(--fader-fill, var(--accent)), 0 1px 5px rgba(0,0,0,0.6);
 }
 .fader::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #fff;
   cursor: pointer;
-  border: none;
+  border: 2.5px solid var(--fader-fill, var(--accent));
+  box-shadow: 0 1px 5px rgba(0,0,0,0.6);
 }
+.fader:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.fader:disabled::-webkit-slider-thumb { cursor: not-allowed; }
+.fader:disabled::-moz-range-thumb   { cursor: not-allowed; }
 
 /* Mixer status row */
 .mixer-status-row {
@@ -797,6 +807,49 @@ a.btn:hover { filter: brightness(1.2); }
   font-size: 0.75rem;
   color: var(--muted);
   padding: 0.3rem 0;
+}
+
+/* VU Meter */
+.vu-meter {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.06);
+  overflow: visible;
+  margin: 0.1rem 0;
+}
+.vu-fill {
+  height: 100%;
+  border-radius: 4px;
+  width: 0%;
+  background: linear-gradient(
+    to right,
+    #22c55e  0%,
+    #86efac 55%,
+    #fbbf24 70%,
+    #f97316 85%,
+    #ef4444 100%
+  );
+  background-size: 100% 100%;
+  background-clip: content-box;
+  transition: width 0.04s linear;
+  will-change: width;
+}
+.vu-peak {
+  position: absolute;
+  top: -1px;
+  width: 3px;
+  height: calc(100% + 2px);
+  border-radius: 2px;
+  background: #fff;
+  opacity: 0.9;
+  left: 0%;
+  transition: left 0.1s ease-out, opacity 0.4s ease;
+  pointer-events: none;
+}
+.vu-meter.vu-clip .vu-fill {
+  box-shadow: 0 0 6px #ef4444;
 }
 
 /* Mic fader */

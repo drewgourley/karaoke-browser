@@ -467,7 +467,7 @@
             <span>🎵 Standby Music</span>
             <span class="fader-val" id="standby-vol-value">75</span>
           </div>
-          <input type="range" id="standby-vol-slider" class="fader" min="0" max="100" value="75">
+          <input type="range" id="standby-vol-slider" class="fader" min="0" max="100" value="75" style="--fader-fill:#00695c">
           <div class="fader-hint">Level when idle or between songs</div>
         </div>
         <div class="fader-row">
@@ -475,7 +475,7 @@
             <span>🎤 Karaoke Video</span>
             <span class="fader-val" id="video-vol-value">100</span>
           </div>
-          <input type="range" id="video-vol-slider" class="fader" min="0" max="100" value="100">
+          <input type="range" id="video-vol-slider" class="fader" min="0" max="100" value="100" style="--fader-fill:#283593">
           <div class="fader-hint">Level during song playback</div>
         </div>
         <div class="fader-row">
@@ -490,7 +490,11 @@
             </span>
             <span class="fader-val" id="mic-vol-value">80</span>
           </div>
-          <input type="range" id="mic-vol-slider" class="fader" min="0" max="100" value="80" disabled>
+          <input type="range" id="mic-vol-slider" class="fader" min="0" max="100" value="80" disabled style="--fader-fill:#880e4f">
+          <div class="vu-meter" id="mic-vu-meter">
+            <div class="vu-fill" id="mic-vu-fill"></div>
+            <div class="vu-peak" id="mic-vu-peak"></div>
+          </div>
           <div class="fader-hint" id="mic-hint">Awaiting player…</div>
         </div>
       </div>
