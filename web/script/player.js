@@ -20,6 +20,7 @@ let showingSlate = false;
 let userActivated = false;
 let controllerReady = false;
 let hideSlateTimer = null;
+let slateInHandler = null; // pending transitionend listener for video load-after-fade
 let requestMode   = null;
 let slateQrLoaded = false;
 let playerMode    = 'karaoke';
@@ -93,7 +94,6 @@ window.onYouTubeIframeAPIReady = function () {
           shouldPauseOnPlay = false;
           ytPlayer.pauseVideo();
           ws.send(JSON.stringify({ type: 'pause' }));
-          showSlate();
         }
         if (e.data === YT.PlayerState.ENDED) {
           // Guard: only report ended when we actually own a playing video.
@@ -162,18 +162,35 @@ function loadVideo(videoId) {
   }
   embedFailed = false;
   shouldPauseOnPlay = true;
-  showingSlate = false;
-  hideSlate(null);
-  const idle = document.getElementById('idle');
-  idle.classList.remove('visible');
-  idle.style.display = 'none';
   currentVideoId = videoId;
   document.getElementById('embed-error').style.display = 'none';
-  if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
-    ytPlayer.setVolume(videoTargetVol);
-    ytPlayer.loadVideoById(videoId);
+  showSlate(); // slate fades in; video loads only after it is fully opaque
+
+  const slate = document.getElementById('singer-slate');
+  // Cancel any previous pending load listener (rapid song change).
+  if (slateInHandler) { slate.removeEventListener('transitionend', slateInHandler); slateInHandler = null; }
+
+  function doLoad() {
+    if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+      ytPlayer.setVolume(videoTargetVol);
+      ytPlayer.loadVideoById(videoId);
+    } else {
+      pendingVideoId = videoId;
+    }
+  }
+
+  if (slate.classList.contains('visible')) {
+    // Slate already fully up (queue jumped while slate was showing) — load immediately.
+    doLoad();
   } else {
-    pendingVideoId = videoId;
+    // Wait for the fade-in to finish so the iframe switch is hidden by the opaque slate.
+    slateInHandler = function(e) {
+      if (e.propertyName !== 'opacity' || !slate.classList.contains('visible')) return;
+      slate.removeEventListener('transitionend', slateInHandler);
+      slateInHandler = null;
+      doLoad();
+    };
+    slate.addEventListener('transitionend', slateInHandler);
   }
 }
 
@@ -194,6 +211,11 @@ function hideSlate(callback) {
   if (hideSlateTimer) { clearTimeout(hideSlateTimer); hideSlateTimer = null; }
   fadeStandbyVolume(0);
   const slate = document.getElementById('singer-slate');
+  const idle  = document.getElementById('idle');
+  // Hide the standby/idle layer before the slate fades out so #yt-player
+  // is never uncovered while idle (z-index:5) is still above it.
+  idle.classList.remove('visible');
+  idle.style.display = 'none';
   slate.classList.remove('visible');
   hideSlateTimer = setTimeout(() => {
     hideSlateTimer = null;
