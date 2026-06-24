@@ -203,8 +203,6 @@ h1 {
 .btn-ghost:hover { color: var(--text); }
 
 .btn-logout {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
   padding-bottom: 1.5rem;
   border-top: 1px solid var(--border);
 }
@@ -216,7 +214,6 @@ h1 {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem 0 0;
-  border-top: 1px solid var(--border);
 }
 
 .request-link-header {
@@ -360,6 +357,65 @@ h1 {
   line-height: 1;
 }
 .btn-display-qr:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── Stream Deck accordion ───────────────────────────────────────────── */
+
+.sd-accordion-toggle {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.85rem 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.2s;
+}
+.sd-accordion-toggle:hover { color: var(--text); }
+.sd-accordion-toggle.open  { color: var(--text); }
+
+.sd-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.25s ease;
+  opacity: 0.6;
+}
+.sd-accordion-toggle.open .sd-chevron { transform: rotate(90deg); }
+
+.sd-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s ease;
+}
+.sd-inline.open {
+  max-height: 400px;
+  padding-top: 0.5rem;
+}
+
+.sd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sd-field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0;
+}
 
 /* ── Display QR modal ──────────────────────────────────────────────────── */
 .modal-overlay {

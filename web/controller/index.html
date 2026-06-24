@@ -15,6 +15,7 @@
 <header>
   <h1>🎤 Karaoke Controller</h1>
   <div class="header-right">
+    <button class="ghost" id="streamdeck-btn" title="Stream Deck plugin setup info">🎮 Stream Deck</button>
     <button class="ghost" id="req-link-btn" title="Get the crowd QR display link" hidden>📺 Crowd QR Display</button>
     <button class="ghost" id="kiosk-link-btn" title="Get the kiosk / request link">🏠 Kiosk Link</button>
     <button class="ghost" id="open-player-btn" title="Open the player in a new tab">🎬 Open Player</button>
@@ -152,6 +153,27 @@
     <div class="modal-actions">
       <button class="secondary" id="modal-skip">Cancel</button>
       <button id="modal-confirm">Add to queue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stream Deck setup modal -->
+<div class="modal-overlay" id="sd-modal" hidden>
+  <div class="modal">
+    <div class="modal-heading">🎮 Stream Deck Setup</div>
+    <p class="req-link-label">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
+    <p class="req-link-label" style="margin-top:0.5rem">Server URL</p>
+    <div class="req-link-controls">
+      <input id="sd-server-url" type="text" readonly class="req-link-url" autocomplete="off">
+      <button class="btn-copy-link" id="sd-copy-url">Copy</button>
+    </div>
+    <p class="req-link-label">Session ID</p>
+    <div class="req-link-controls">
+      <input id="sd-session-id" type="text" readonly class="req-link-url" autocomplete="off">
+      <button class="btn-copy-link" id="sd-copy-sid">Copy</button>
+    </div>
+    <div class="modal-actions">
+      <button class="ghost" id="sd-modal-close">Close</button>
     </div>
   </div>
 </div>

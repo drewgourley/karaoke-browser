@@ -74,6 +74,28 @@
           <button id="display-qr-btn" class="btn-display-qr hidden"><span class="btn-qr-icon">📱</span>Use a QR Code to open the crowd QR display page on a separate device</button>
         </div>
       </div>
+      <button id="sd-accordion-btn" class="sd-accordion-toggle">
+        <span>🎮 Stream Deck</span>
+        <span class="sd-chevron">&#x203A;</span>
+      </button>
+      <div id="sd-content" class="sd-inline">
+        <p class="hint">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
+        <div class="sd-field">
+          <p class="sd-field-label">Server URL</p>
+          <div class="request-link-controls">
+            <input id="sd-server-url" type="text" readonly class="request-url-input" autocomplete="off">
+            <button id="sd-copy-url" class="btn-copy">Copy</button>
+          </div>
+        </div>
+        <div class="sd-field">
+          <p class="sd-field-label">Session ID</p>
+          <div class="request-link-controls">
+            <input id="sd-session-id" type="text" readonly class="request-url-input" autocomplete="off">
+            <button id="sd-copy-sid" class="btn-copy">Copy</button>
+          </div>
+        </div>
+        <p class="hint">If your server requires a password, enter the Auth Token separately in the plugin inspector.</p>
+      </div>
     </div>
 
     <button id="logout-btn" class="btn-ghost btn-logout hidden">Log out</button>

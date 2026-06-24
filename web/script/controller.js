@@ -43,6 +43,7 @@ const dmUnbanBtn         = document.getElementById('dm-unban-btn');
 const dmUnblockBtn       = document.getElementById('dm-unblock-btn');
 const reqLinkBtn         = document.getElementById('req-link-btn');
 const kioskLinkBtn       = document.getElementById('kiosk-link-btn');
+const sdBtn              = document.getElementById('streamdeck-btn');
 const standbySettingsBtn   = document.getElementById('standby-settings-btn');
 const standbySettingsModal = document.getElementById('standby-settings-modal');
 const ssTitle              = document.getElementById('ss-title');
@@ -580,6 +581,35 @@ kioskLinkCopyBtn.addEventListener('click', () => {
 
 kioskLinkCloseBtn.addEventListener('click', () => { kioskLinkModal.hidden = true; });
 kioskLinkModal.addEventListener('click', e => { if (e.target === kioskLinkModal) kioskLinkModal.hidden = true; });
+
+// ── Stream Deck setup modal ────────────────────────────────────────────────
+const sdModal        = document.getElementById('sd-modal');
+const sdServerUrl    = document.getElementById('sd-server-url');
+const sdSessionIdEl  = document.getElementById('sd-session-id');
+const sdCopyUrl      = document.getElementById('sd-copy-url');
+const sdCopySid      = document.getElementById('sd-copy-sid');
+const sdModalClose   = document.getElementById('sd-modal-close');
+
+sdBtn.addEventListener('click', () => {
+  sdServerUrl.value   = location.origin;
+  sdSessionIdEl.value = sessionId;
+  sdModal.hidden = false;
+});
+
+function makeSdCopyBtn(btn, inputEl) {
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(inputEl.value).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    }).catch(() => { inputEl.select(); });
+  });
+}
+makeSdCopyBtn(sdCopyUrl, sdServerUrl);
+makeSdCopyBtn(sdCopySid, sdSessionIdEl);
+
+sdModalClose.addEventListener('click', () => { sdModal.hidden = true; });
+sdModal.addEventListener('click', e => { if (e.target === sdModal) sdModal.hidden = true; });
 
 // ── Mixer panel ──────────────────────────────────────────────────────────
 const mixerPanel        = document.getElementById('mixer-panel');

@@ -30,6 +30,10 @@ const displayQrBtn     = document.getElementById('display-qr-btn');
 const displayQrModal   = document.getElementById('display-qr-modal');
 const displayQrImg     = document.getElementById('display-qr-img');
 const displayQrClose   = document.getElementById('display-qr-close');
+const sdServerUrl      = document.getElementById('sd-server-url');
+const sdSessionId      = document.getElementById('sd-session-id');
+const sdCopyUrl        = document.getElementById('sd-copy-url');
+const sdCopySid        = document.getElementById('sd-copy-sid');
 
 let currentSessionId = null;
 let authMode = false; // true when AUTH_TOKEN is active on the server
@@ -168,6 +172,9 @@ function showRoomLinks() {
   if (reqModeToggle) reqModeToggle.dataset.mode = currentMode;
   updateLinkLabel(currentMode);
   connectIngressWs();
+  // Populate Stream Deck inline fields.
+  if (sdServerUrl) sdServerUrl.value = location.origin;
+  if (sdSessionId) sdSessionId.value = currentSessionId || '';
   // Fetch and cache the request QR code into the modal img.
   fetch('/api/qr?s=' + encodeURIComponent(currentSessionId) + '&data=' + encodeURIComponent(requestUrl))
     .then(r => r.json())
@@ -335,3 +342,27 @@ function closeRequestQrModal() { requestQrModal.classList.add('hidden'); }
 if (requestQrBtn)   requestQrBtn.addEventListener('click', () => requestQrModal.classList.remove('hidden'));
 if (requestQrClose) requestQrClose.addEventListener('click', closeRequestQrModal);
 if (requestQrModal) requestQrModal.addEventListener('click', e => { if (e.target === requestQrModal) closeRequestQrModal(); });
+
+// ── Stream Deck copy buttons ────────────────────────────────────────────────
+const sdAccordionBtn = document.getElementById('sd-accordion-btn');
+const sdContent      = document.getElementById('sd-content');
+
+if (sdAccordionBtn && sdContent) {
+  sdAccordionBtn.addEventListener('click', () => {
+    sdAccordionBtn.classList.toggle('open');
+    sdContent.classList.toggle('open');
+  });
+}
+
+function makeCopyBtn(btn, inputEl) {
+  if (!btn || !inputEl) return;
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(inputEl.value).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    }).catch(() => { inputEl.select(); });
+  });
+}
+makeCopyBtn(sdCopyUrl, sdServerUrl);
+makeCopyBtn(sdCopySid, sdSessionId);

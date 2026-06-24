@@ -169,6 +169,10 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || null;
 // client must prove knowledge of. The plaintext token never travels over the wire.
 const AUTH_HASH = AUTH_TOKEN ? createHash('sha256').update(AUTH_TOKEN).digest('hex') : null;
 
+// TITLE_BROADCAST: if set, /api/title?s=SESSION&auth=TOKEN returns plain-text
+// currently-playing title (falls back to this string when nothing is playing).
+const TITLE_BROADCAST = process.env.TITLE_BROADCAST || null;
+
 // ── Auth (optional) ───────────────────────────────────────────────────────────
 // If AUTH_TOKEN is set in .env, HTML entry points are protected by a password.
 // The browser hashes the password with SHA-256 and POSTs the hash to /api/login.
@@ -682,6 +686,23 @@ app.post('/api/session/reset', async (req, res) => {
   logger.info(`Session reset  session=${sid(sessionId)}`);
   res.json({ ok: true });
 });
+
+// ── REST – currently-playing title broadcast (hidden feature; requires TITLE_BROADCAST env var) ──────────
+if (TITLE_BROADCAST) {
+  app.get('/api/buttm', titleLimiter, async (req, res) => {
+    if (AUTH_TOKEN && req.query.auth !== AUTH_TOKEN) {
+      return res.status(403).type('text/plain').send('Forbidden');
+    }
+    const session = await getSession(req.query.s);
+    if (session) {
+      const title = session.nowPlaying?.title
+        || (session.standbyTrack?.title ? cleanTitle(session.standbyTrack.title) : null)
+        || null;
+      return res.type('text/plain').send(title || TITLE_BROADCAST);
+    }
+    return res.type('text/plain').send(TITLE_BROADCAST);
+  });
+}
 
 // ── REST – title lookup ───────────────────────────────────────────────────────
 
