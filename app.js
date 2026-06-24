@@ -699,7 +699,7 @@ if (TITLE_BROADCAST) {
     }
     const session = await getSession(req.query.s);
     if (session) {
-      const title = session.nowPlaying?.title
+      const title = (session.nowPlaying?.title && !session.paused ? session.nowPlaying.title : null)
         || (session.standbyTrack?.title ? cleanTitle(session.standbyTrack.title) : null)
         || null;
       return res.type('text/plain').send(title || TITLE_BROADCAST);
