@@ -65,6 +65,10 @@ const WS_CONN_RATE_MAX       = Number(process.env.WS_CONN_RATE_MAX)       || 60;
 const WS_CONN_RATE_WINDOW_MS = (Number(process.env.WS_CONN_RATE_WINDOW_MIN) || 1) * 60_000;
 
 // Per-route HTTP rate limiters.
+const buttmLimiter = makeRateLimiter({
+  windowMs: 60_000,
+  max: 30,
+});
 const createSessionLimiter = makeRateLimiter({
   windowMs: (Number(process.env.SESSION_RATE_WINDOW_MIN) || 15) * 60_000,
   max:       Number(process.env.SESSION_RATE_MAX)        || 10,
@@ -689,7 +693,7 @@ app.post('/api/session/reset', async (req, res) => {
 
 // ── REST – currently-playing title broadcast (hidden feature; requires TITLE_BROADCAST env var) ──────────
 if (TITLE_BROADCAST) {
-  app.get('/api/buttm', titleLimiter, async (req, res) => {
+  app.get('/api/buttm', buttmLimiter, async (req, res) => {
     if (AUTH_TOKEN && req.query.auth !== AUTH_TOKEN) {
       return res.status(403).type('text/plain').send('Forbidden');
     }
