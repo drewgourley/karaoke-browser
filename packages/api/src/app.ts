@@ -7,7 +7,7 @@ import http from 'http';
 import path from 'path';
 import Redis from 'ioredis';
 import QRCode from 'qrcode';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import type { IncomingMessage } from 'http';
 
 import type { SessionState, ClientMessage, ServerMessage } from '@karaoke-browser/shared';
@@ -99,6 +99,11 @@ const searchLimiter = makeRateLimiter({
   windowMs: (Number(process.env.SEARCH_RATE_WINDOW_MIN) || 10) * 60_000,
   max:       Number(process.env.SEARCH_RATE_MAX)        || 20,
 });
+const loginLimiter = makeRateLimiter({
+  windowMs: (Number(process.env.LOGIN_RATE_WINDOW_MIN) || 15) * 60_000,
+  max:       Number(process.env.LOGIN_RATE_MAX)         || 5,
+  message: 'Too many login attempts — try again later',
+});
 
 // ── YouTube API key pool ───────────────────────────────────────────────────────────
 const YT_KEYS = (process.env.YOUTUBE_API_KEYS ?? '')
@@ -170,8 +175,36 @@ const wss = new WebSocketServer({
   },
 });
 
-const AUTH_TOKEN = process.env.AUTH_TOKEN ?? null;
-const AUTH_HASH  = AUTH_TOKEN ? createHash('sha256').update(AUTH_TOKEN).digest('hex') : null;
+// ── Auth token setup ────────────────────────────────────────────────────────
+// Prefer AUTH_TOKEN_HASH (pre-hashed SHA-256 hex) so plaintext never lives in
+// .env. AUTH_TOKEN (plaintext) still works for backwards compat but logs a
+// startup warning. Generate a hash with: npm run hash-password
+let AUTH_HASH: string | null = null;
+if (process.env.AUTH_TOKEN_HASH) {
+  const h = process.env.AUTH_TOKEN_HASH.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(h)) {
+    logger.error('AUTH_TOKEN_HASH must be a 64-character lowercase hex SHA-256 string.');
+    logger.error('Generate one with: npm run hash-password -- yourpassword');
+    process.exit(1);
+  }
+  AUTH_HASH = h;
+} else if (process.env.AUTH_TOKEN) {
+  logger.warn('AUTH_TOKEN stores your password in plain text.');
+  logger.warn('Migrate to AUTH_TOKEN_HASH: npm run hash-password -- yourpassword');
+  AUTH_HASH = createHash('sha256').update(process.env.AUTH_TOKEN).digest('hex');
+}
+
+// In auth mode the fixed session lives under a key *derived* from AUTH_HASH
+// rather than AUTH_HASH itself, so the cookie value and the Redis key differ.
+const AUTH_SESSION_ID = AUTH_HASH
+  ? createHash('sha256').update(AUTH_HASH + ':session-v1').digest('hex')
+  : null;
+
+// Constant-time comparison for 64-char lowercase hex auth hashes.
+function hashEqual(a: string | null, b: string | null): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, 'ascii'), Buffer.from(b, 'ascii'));
+}
 const TITLE_BROADCAST = process.env.TITLE_BROADCAST ?? null;
 
 // ── Auth (optional) ───────────────────────────────────────────────────────────
@@ -199,7 +232,7 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Only gate HTML entry points; CSS/JS assets load freely.
   if (!p.endsWith('/') && !p.endsWith('.html')) { next(); return; }
 
-  if (cookieToken === AUTH_HASH) { next(); return; }
+  if (hashEqual(cookieToken, AUTH_HASH)) { next(); return; }
 
   logger.debug(`Auth redirect ${req.path} → / for ${req.ip}`);
   res.redirect(302, '/?redirect=' + encodeURIComponent(req.originalUrl));
@@ -542,14 +575,14 @@ async function playNext(sessionId: string, session: SessionState): Promise<void>
 app.get('/api/auth-status', (req, res) => {
   res.json({
     authRequired: !!AUTH_HASH,
-    authed: !AUTH_HASH || getCookie(req, 'kp_auth') === AUTH_HASH,
+    authed: !AUTH_HASH || hashEqual(getCookie(req, 'kp_auth'), AUTH_HASH),
   });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginLimiter, (req, res) => {
   if (!AUTH_HASH) { res.json({ ok: true }); return; }
   const { hash } = (req.body as Record<string, unknown>) ?? {};
-  if (typeof hash !== 'string' || hash !== AUTH_HASH) {
+  if (typeof hash !== 'string' || !hashEqual(hash, AUTH_HASH)) {
     logger.warn(`Login failed from ${req.ip}`);
     res.status(401).json({ ok: false });
     return;
@@ -573,7 +606,7 @@ app.post('/api/session/create', createSessionLimiter, async (req, res) => {
   let id: string;
   let requestMode = 'kiosk';
   if (AUTH_HASH) {
-    id = AUTH_HASH;
+    id = AUTH_SESSION_ID!;
     const existing = await getSession(id);
     if (!existing) {
       const count = await redis.scard(K.sessions());
@@ -647,7 +680,7 @@ app.post('/api/session/reset', async (req, res) => {
 if (TITLE_BROADCAST) {
   app.get('/api/buttm', buttmLimiter, async (req, res) => {
     const q = req.query as Record<string, string | undefined>;
-    if (AUTH_TOKEN && q['auth'] !== AUTH_TOKEN) {
+    if (AUTH_HASH && !hashEqual(q['auth'] ?? null, AUTH_HASH)) {
       res.status(403).type('text/plain').send('Forbidden'); return;
     }
     const session = await getSession(q['s'] ?? null);
@@ -880,7 +913,7 @@ wss.on('connection', async (rawWs: WebSocket, req: IncomingMessage) => {
   const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
     ?? req.socket.remoteAddress ?? 'unknown';
 
-  if (AUTH_HASH && role !== 'request' && getCookie(req as unknown as Request, 'kp_auth') !== AUTH_HASH) {
+  if (AUTH_HASH && role !== 'request' && !hashEqual(getCookie(req as unknown as Request, 'kp_auth'), AUTH_HASH)) {
     logger.warn(`WS auth failed  role=${role} ip=${ip}`);
     ws.close(4001, 'Unauthorized');
     return;

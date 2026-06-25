@@ -113,7 +113,8 @@ Copy `packages/api/.env.example` to `packages/api/.env` and edit as needed.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AUTH_TOKEN` | _(disabled)_ | Password for the room. See [Auth](#auth-optional) below. |
+| `AUTH_TOKEN_HASH` | _(disabled)_ | SHA-256 hash of your password. Generate with `npm run hash-password`. Preferred over `AUTH_TOKEN`. |
+| `AUTH_TOKEN` | _(disabled)_ | Plaintext password (deprecated — logs a startup warning). Use `AUTH_TOKEN_HASH` instead. |
 
 ### Sessions
 
@@ -146,7 +147,24 @@ All per-IP unless noted. `_MAX` = request ceiling within the window; `_WINDOW_MI
 
 By default auth is disabled — suitable for a home LAN where you trust everyone on the network.
 
-When `AUTH_TOKEN` is set in `.env`, the index page shows a password form before allowing access to the controller and player. The browser hashes the entered password with SHA-256 and sends only the hash to the server — the plaintext never leaves the browser. A successful login sets a 30-day `HttpOnly` cookie.
+When `AUTH_TOKEN_HASH` (or the legacy `AUTH_TOKEN`) is set in `.env`, the index page shows a password form before allowing access to the controller and player. The browser hashes the entered password with SHA-256 and sends only the hash to the server — the plaintext never leaves the browser. A successful login sets a 30-day `HttpOnly` cookie.
+
+### Setting a password
+
+Generate the hash once and store only that in `.env` — the plaintext password never needs to live on disk:
+
+```bash
+npm run hash-password -- yourpassword
+# → e.g. 5e884898da28047151d0e56f8dc629...
+```
+
+Then in `packages/api/.env`:
+
+```
+AUTH_TOKEN_HASH=5e884898da28047151d0e56f8dc629...
+```
+
+The legacy `AUTH_TOKEN=plaintext` still works but logs a startup warning.
 
 The `/request` page is always public; the session ID in the URL is the audience's credential.
 

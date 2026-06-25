@@ -12,7 +12,8 @@
     "build:shared": "npm run build -w packages/shared",
     "build:api": "npm run build -w packages/api",
     "build:app": "npm run build -w packages/app",
-    "start": "npm run start -w packages/api"
+    "start": "npm run start -w packages/api",
+    "hash-password": "node -e \"const{createHash}=require('crypto');const p=process.argv[1];if(!p){console.error('Usage: npm run hash-password -- yourpassword');process.exit(1);}console.log(createHash('sha256').update(p).digest('hex'));\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
