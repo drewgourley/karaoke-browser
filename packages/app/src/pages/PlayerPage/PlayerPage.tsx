@@ -38,6 +38,12 @@ export default function PlayerPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    document.title = 'Karaoke Player';
+    const icon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>")}`;
+  }, []);
+
+  useEffect(() => {
     if (!sessionId) navigate('/?redirect=/player');
   }, [sessionId, navigate]);
 

@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n api,app -c cyan,magenta \"npm run dev -w packages/api\" \"npm run dev -w packages/app\"",
+    "dev": "npm run build:shared && concurrently -n shared,api,app -c yellow,cyan,magenta \"npm run dev -w packages/shared\" \"npm run dev -w packages/api\" \"npm run dev -w packages/app\"",
     "build": "npm run build -w packages/shared && npm run build -w packages/api && npm run build -w packages/app",
     "build:shared": "npm run build -w packages/shared",
     "build:api": "npm run build -w packages/api",

@@ -18,6 +18,12 @@ async function sha256hex(text: string): Promise<string> {
 }
 
 export default function IndexPage() {
+  useEffect(() => {
+    document.title = 'Karaoke Browser';
+    const icon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>")}`;
+  }, []);
+
   const { sessionId, setSessionId, authStatus, refreshAuth } = useSession();
   const [searchParams] = useSearchParams();
   const redirectTarget = searchParams.get('redirect');
@@ -260,7 +266,7 @@ export default function IndexPage() {
                 <div className="link-desc">Add songs, manage the queue, and control playback</div>
               </button>
               <button id="player-btn" className="link-card" onClick={openPlayer}>
-                <div className="link-icon">🎬</div>
+                <div className="link-icon">📺</div>
                 <div className="link-title">Player</div>
                 <div className="link-desc">Fullscreen video player — display on screen or capture in OBS</div>
               </button>

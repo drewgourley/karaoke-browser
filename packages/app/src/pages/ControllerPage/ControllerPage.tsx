@@ -64,6 +64,12 @@ export default function ControllerPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    document.title = 'Karaoke Controller';
+    const icon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎛️</text></svg>")}`;
+  }, []);
+
+  useEffect(() => {
     if (!sessionId) navigate('/?redirect=/controller');
   }, [sessionId, navigate]);
 
@@ -420,12 +426,12 @@ export default function ControllerPage() {
         <div className="header-right">
           <button className="ghost" id="streamdeck-btn" title="Stream Deck plugin setup info" onClick={() => setShowSdModal(true)}>🎮 Stream Deck</button>
           {st?.requestMode === 'crowd' && (
-            <button className="ghost" id="req-link-btn" title="Get the crowd QR display link" onClick={openReqLinkModal}>📺 Crowd QR Display</button>
+            <button className="ghost" id="req-link-btn" title="Get the crowd QR display link" onClick={openReqLinkModal}>🗃️ Crowd QR Display</button>
           )}
           {st?.requestMode !== 'crowd' && (
             <button className="ghost" id="kiosk-link-btn" title="Get the kiosk / request link" onClick={openKioskLinkModal}>🏠 Kiosk Link</button>
           )}
-          <button className="ghost" id="open-player-btn" title="Open the player in a new tab" onClick={() => window.open('/player', '_blank')}>🎬 Open Player</button>
+          <button className="ghost" id="open-player-btn" title="Open the player in a new tab" onClick={() => window.open('/player', '_blank')}>📺 Open Player</button>
           {(st?.requesterCount ?? 0) > 0 && (
             <div className="status status-clickable" id="requester-badge" title="Manage connected devices" onClick={() => setShowDevices(true)}>
               <div className="dot on"></div>
