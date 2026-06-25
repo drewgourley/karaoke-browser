@@ -1,0 +1,5 @@
+/* Make the React root wrapper transparent to layout so page CSS that targets
+   `body > .page` / full-screen layouts works exactly as in the legacy pages. */
+#root {
+  display: contents;
+}

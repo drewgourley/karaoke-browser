@@ -1,6 +1,11 @@
 # dependencies
 node_modules/
 
+# build output
+packages/api/dist/
+packages/app/dist/
+packages/shared/dist/
+
 # secrets
 .env
 ecosystem.config.js

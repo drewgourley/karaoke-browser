@@ -41,9 +41,10 @@ Session IDs are 40-character random hex strings. The request page uses the sessi
 | Page | Who uses it | URL |
 |---|---|---|
 | Index | Host — creates session, shares links | `/` |
-| Controller | DJ — manages queue and requests | `/controller/` |
-| Player | Venue screen / OBS | `/player/` |
-| Request | Audience — submits song requests | `/request/?s=<sessionId>` |
+| Controller | DJ — manages queue and requests | `/controller` |
+| Player | Venue screen / OBS | `/player` |
+| Request | Audience — submits song requests | `/request?s=<sessionId>` |
+| Display | Crowd QR display (crowd mode) | `/display?s=<sessionId>` |
 
 ---
 
@@ -52,6 +53,8 @@ Session IDs are 40-character random hex strings. The request page uses the sessi
 - **Node.js 18+**
 - **Redis 6+** — required for session state, pub/sub broadcast, and search cache
 - A **YouTube Data API v3 key** (free) for song search. URL-paste and the full queue work without one.
+
+TypeScript is compiled as part of `npm run build` — no global install needed.
 
 ### Getting YouTube API keys
 
@@ -71,18 +74,25 @@ Session IDs are 40-character random hex strings. The request page uses the sessi
 git clone <repo-url>
 cd karaoke-browser
 npm install
-cp .env.example .env
-# open .env and add your YOUTUBE_API_KEYS (and REDIS_URL if Redis isn't on localhost:6379)
+cp packages/api/.env.example packages/api/.env
+# open packages/api/.env and add your YOUTUBE_API_KEYS (and REDIS_URL if Redis isn't on localhost:6379)
+npm run build
 npm start
 ```
 
 Open **http://localhost:3444** in your browser.
 
+For **development** (hot-reloading API + Vite dev server):
+
+```bash
+npm run dev
+```
+
 ---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and edit as needed.
+Copy `packages/api/.env.example` to `packages/api/.env` and edit as needed.
 
 ### YouTube / Search
 
@@ -138,7 +148,7 @@ By default auth is disabled — suitable for a home LAN where you trust everyone
 
 When `AUTH_TOKEN` is set in `.env`, the index page shows a password form before allowing access to the controller and player. The browser hashes the entered password with SHA-256 and sends only the hash to the server — the plaintext never leaves the browser. A successful login sets a 30-day `HttpOnly` cookie.
 
-The `/request/` page is always public; the session ID in the URL is the audience's credential.
+The `/request` page is always public; the session ID in the URL is the audience's credential.
 
 ---
 
@@ -168,12 +178,14 @@ Set `AUTH_TOKEN` in `.env` whenever the server is reachable from the internet.
 
 `ecosystem.config.js` is gitignored so your PM2 config stays local. Create one:
 
+Build first, then create `ecosystem.config.js` in the project root (it is gitignored so your local config stays private):
+
 ```js
 // ecosystem.config.js
 module.exports = {
   apps: [{
     name: 'karaoke-browser',
-    script: 'app.js',
+    script: './packages/api/dist/app.js',
     env: {
       NODE_ENV: 'production',
       PORT: 3444,
@@ -183,11 +195,14 @@ module.exports = {
 ```
 
 ```bash
+npm run build          # compile TypeScript + build React app
 npm install -g pm2
 pm2 start ecosystem.config.js
 pm2 save
-pm2 startup   # auto-start on reboot
+pm2 startup            # auto-start on reboot
 ```
+
+To redeploy after a code change: `npm run build && pm2 restart karaoke-browser`
 
 ---
 
@@ -242,24 +257,35 @@ Output is ANSI-coloured when stdout is a TTY, plain text otherwise (suitable for
 
 ## Project structure
 
+This is a **TypeScript monorepo** with three npm workspace packages:
+
 ```
-app.js                   Main server — Express + WebSocket, auth, sessions, REST API
-.env.example             Configuration template
-web/
-  index.html             Host entry page — login / session creation / share links
-  controller/index.html  DJ queue manager
-  player/index.html      YouTube player (venue screen)
-  request/index.html     Audience song request form
-  script/
-    index.js             Entry page logic
-    controller.js        Controller WebSocket client + queue/request rendering
-    player.js            Player WebSocket client + YouTube IFrame API
-    request.js           Request page WebSocket client + form logic
-  style/
-    index.css
-    controller.css
-    player.css
-    request.css
+packages/
+  shared/              TypeScript types shared between api and app
+    src/
+      messages.ts      ClientMessage / ServerMessage discriminated unions
+      session.ts       SessionState, QueueItem, Request, etc.
+      api.ts           REST request / response shapes
+
+  api/                 Node.js backend (TypeScript → compiled JS)
+    src/app.ts         Express + WebSocket server, auth, sessions, REST API
+    dist/              tsc output (gitignored)
+    .env.example       Configuration template
+
+  app/                 React + TypeScript SPA (Vite)
+    src/
+      App.tsx          Router — lazy-loads each page for per-route CSS isolation
+      pages/
+        IndexPage/     Host entry — login / session creation / share links
+        ControllerPage/ DJ queue manager, mixer, requests
+        PlayerPage/    YouTube IFrame player (venue screen / OBS)
+        RequestPage/   Audience song request form
+        DisplayPage/   Crowd QR display screen
+    dist/              Vite build output, served by the API (gitignored)
+
+docker-compose.yml     Redis (default) + optional full-stack container
+Dockerfile             Multi-stage build: shared→app→api, then production image
+ecosystem.config.js    PM2 config — gitignored (create locally)
 ```
 
 ---

@@ -1,17 +1,20 @@
 {
-  "name": "karaoke-browser",
+  "name": "karaoke-browser-monorepo",
   "version": "1.0.0",
-  "description": "Karaoke queue browser with WebSocket-controlled YouTube player",
+  "description": "Karaoke queue browser — TypeScript monorepo",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "start": "node app.js"
+    "dev": "concurrently -n api,app -c cyan,magenta \"npm run dev -w packages/api\" \"npm run dev -w packages/app\"",
+    "build": "npm run build -w packages/shared && npm run build -w packages/api && npm run build -w packages/app",
+    "build:shared": "npm run build -w packages/shared",
+    "build:api": "npm run build -w packages/api",
+    "build:app": "npm run build -w packages/app",
+    "start": "npm run start -w packages/api"
   },
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2",
-    "helmet": "^8.2.0",
-    "ioredis": "^5.11.1",
-    "qrcode": "^1.5.4",
-    "ws": "^8.16.0"
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
