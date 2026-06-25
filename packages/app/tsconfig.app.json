@@ -22,5 +22,8 @@
       "@karaoke-browser/shared": ["../shared/src/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../shared" }
+  ]
 }
