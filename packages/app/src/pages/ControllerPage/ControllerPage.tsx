@@ -749,9 +749,9 @@ export default function ControllerPage() {
                     <span>🎵 Standby Music</span>
                     <span className="fader-val" id="standby-vol-value">{st.standbyVolume}</span>
                   </div>
-                  <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" defaultValue={st.standbyVolume}
+                  <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={st.standbyVolume}
                     style={{ '--fader-fill': '#00695c', '--pct': st.standbyVolume } as React.CSSProperties}
-                    onChange={e => { send({ type: 'set-standby-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); const el = document.getElementById('standby-vol-value'); if (el) el.textContent = e.target.value; }} />
+                    onChange={e => { send({ type: 'set-standby-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
                   <div className="fader-hint">Level when idle or between songs</div>
                 </div>
                 <div className="fader-row">
@@ -759,9 +759,9 @@ export default function ControllerPage() {
                     <span>🎤 Karaoke Video</span>
                     <span className="fader-val" id="video-vol-value">{st.videoVolume}</span>
                   </div>
-                  <input type="range" id="video-vol-slider" className="fader" min="0" max="100" defaultValue={st.videoVolume}
+                  <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={st.videoVolume}
                     style={{ '--fader-fill': '#283593', '--pct': st.videoVolume } as React.CSSProperties}
-                    onChange={e => { send({ type: 'set-video-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); const el = document.getElementById('video-vol-value'); if (el) el.textContent = e.target.value; }} />
+                    onChange={e => { send({ type: 'set-video-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
                   <div className="fader-hint">Level during song playback</div>
                 </div>
                 <div className="fader-row">
@@ -776,9 +776,9 @@ export default function ControllerPage() {
                     </span>
                     <span className="fader-val" id="mic-vol-value">{micVol}</span>
                   </div>
-                  <input type="range" id="mic-vol-slider" className="fader" min="0" max="100" defaultValue={micVol} disabled={!micReady}
+                  <input type="range" id="mic-vol-slider" className="fader" min="0" max="100" value={micVol} disabled={!micReady}
                     style={{ '--fader-fill': '#880e4f', '--pct': micVol } as React.CSSProperties}
-                    onChange={e => { send({ type: 'set-mic-volume', volume: Number(e.target.value) }); applyMicGain(Number(e.target.value), micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); const el = document.getElementById('mic-vol-value'); if (el) el.textContent = e.target.value; }} />
+                    onChange={e => { send({ type: 'set-mic-volume', volume: Number(e.target.value) }); applyMicGain(Number(e.target.value), micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
                   <div className="vu-meter" id="mic-vu-meter">
                     {Array.from({ length: VU_DOTS }, (_, i) => (
                       <span key={i} className={`vu-dot ${i < 15 ? 'vu-green' : i < 19 ? 'vu-yellow' : 'vu-red'}${(i <= vuLevel || (i === vuPeak && vuPeak > vuLevel)) ? ' lit' : ''}${(i === vuPeak && vuPeak > vuLevel) ? ' peak' : ''}`} />
