@@ -731,6 +731,10 @@ a.btn:hover { filter: brightness(1.2); }
   font-size: 0.68rem;
   color: var(--muted);
 }
+.ios-vol-note {
+  color: #fb923c;
+  font-weight: 600;
+}
 .fader {
   -webkit-appearance: none;
   appearance: none;

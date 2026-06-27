@@ -37,6 +37,7 @@ export type ClientMessage =
   | { type: 'player-mode'; mode: PlayerMode }
   | { type: 'set-player-mode'; mode: PlayerMode }
   | { type: 'toggle-player-mode' }
+  | { type: 'player-ios'; isIOS: boolean }
   | {
       type: 'set-standby-settings';
       title?: string;
@@ -99,6 +100,7 @@ export interface StateMessage {
   standbySubtitleFont: string;
   standbySubtitleSize: number;
   standbySubtitleOutlineSize: number;
+  playerIsIOS: boolean;
 }
 
 export interface DeviceStatusMessage {

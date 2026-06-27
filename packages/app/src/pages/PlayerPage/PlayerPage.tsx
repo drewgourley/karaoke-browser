@@ -22,6 +22,8 @@ interface YTPlayer {
   nextVideo(): void;
   setVolume(v: number): void;
   getVolume(): number;
+  mute(): void;
+  unMute(): void;
   loadPlaylist(opts: { listType: string; list: string; index: number }): void;
   getVideoData(): { video_id?: string; title?: string };
   destroy(): void;
@@ -41,6 +43,39 @@ export default function PlayerPage() {
     document.title = 'Karaoke Player';
     const icon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
     if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>")}`;
+  }, []);
+
+  // ── Mobile / tablet hardening ───────────────────────────────────────────
+  useEffect(() => {
+    // Lock the viewport so pinch-zoom can't break the fixed layout
+    const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const prevContent = viewport?.content;
+    if (viewport) viewport.content = 'width=device-width, initial-scale=1.0, user-scalable=no';
+    // Allow standalone (full-screen) mode when added to the home screen
+    const appleMeta = Object.assign(document.createElement('meta'), { name: 'apple-mobile-web-app-capable', content: 'yes' });
+    const webMeta   = Object.assign(document.createElement('meta'), { name: 'mobile-web-app-capable',       content: 'yes' });
+    document.head.append(appleMeta, webMeta);
+    return () => {
+      if (viewport && prevContent !== undefined) viewport.content = prevContent;
+      appleMeta.remove();
+      webMeta.remove();
+    };
+  }, []);
+
+  // ── Screen wake lock — keeps the display on during karaoke ─────────────
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wl = (navigator as any).wakeLock as { request(t: string): Promise<{ release(): void }> } | undefined;
+    if (!wl) return;
+    let lock: { release(): void } | null = null;
+    const acquire = () => wl.request('screen').then(l => { lock = l; }).catch(() => {});
+    const onVisible = () => { if (document.visibilityState === 'visible') void acquire(); };
+    void acquire();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      lock?.release();
+    };
   }, []);
 
   useEffect(() => {
@@ -92,8 +127,13 @@ export default function PlayerPage() {
       hideTimer.current = setTimeout(() => setBtnVisible(false), 3000);
     };
     document.addEventListener('mousemove', show);
+    document.addEventListener('touchstart', show, { passive: true });
     show();
-    return () => { document.removeEventListener('mousemove', show); if (hideTimer.current) clearTimeout(hideTimer.current); };
+    return () => {
+      document.removeEventListener('mousemove', show);
+      document.removeEventListener('touchstart', show);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    };
   }, []);
 
   // ── Standby helpers ────────────────────────────────────────────────────
@@ -119,7 +159,10 @@ export default function PlayerPage() {
     standbyRef.current.setVolume(0);
     standbyRef.current.loadPlaylist({ listType: 'playlist', list: id, index: 0 });
     standbyRef.current.playVideo();
-    if (userActivated.current) fadeStandbyVolume(standbyTargetVol.current);
+    if (userActivated.current) {
+      standbyRef.current.unMute(); // iOS: muted autoplay is permitted; unmute now that user has activated
+      fadeStandbyVolume(standbyTargetVol.current);
+    }
   }, [fadeStandbyVolume]);
 
   const stopStandby = useCallback(() => {
@@ -321,6 +364,12 @@ export default function PlayerPage() {
     const ws = new WebSocket(`${proto}//${location.host}/ws?role=player&s=${encodeURIComponent(sessionId)}`);
     wsRef.current = ws;
 
+    ws.onopen = () => {
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      ws.send(JSON.stringify({ type: 'player-ios', isIOS: ios }));
+    };
+
     ws.onmessage = (event: MessageEvent<string>) => {
       let msg: Record<string, unknown>;
       try { msg = JSON.parse(event.data) as Record<string, unknown>; } catch { return; }
@@ -418,7 +467,9 @@ export default function PlayerPage() {
     window.onYouTubeIframeAPIReady = () => {
       ytRef.current = new window.YT.Player('yt-player', {
         width: '100%', height: '100%',
-        playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, showinfo: 0, cc_load_policy: 0, fs: 0, disablekb: 1, playsinline: 1 },
+        // mute:1 allows autoplay on mobile (browsers permit muted autoplay without a gesture);
+        // unMute() is called inside the gate-tap handler which runs in a user-gesture context.
+        playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, showinfo: 0, cc_load_policy: 0, fs: 0, disablekb: 1, playsinline: 1, enablejsapi: 1, mute: 1, origin: window.location.origin },
         events: {
           onReady: () => {
             if (pendingVideoId.current && userActivated.current) {
@@ -448,7 +499,7 @@ export default function PlayerPage() {
 
       standbyRef.current = new window.YT.Player('standby-player', {
         width: '1', height: '1',
-        playerVars: { autoplay: 1, controls: 0, loop: 1, fs: 0, disablekb: 1, playsinline: 1, rel: 0 },
+        playerVars: { autoplay: 1, controls: 0, loop: 1, fs: 0, disablekb: 1, playsinline: 1, rel: 0, mute: 1, origin: window.location.origin },
         events: {
           onReady: () => {
             standbyRef.current?.setVolume(0);
@@ -489,17 +540,26 @@ export default function PlayerPage() {
     if (!controllerReady.current) return;
     if (!userActivated.current) {
       userActivated.current = true;
+      // Unmute both players here — this callback runs inside a user-gesture context,
+      // which is the only time iOS/Android allow unmuting / starting unmuted playback.
+      ytRef.current?.unMute();
+      ytRef.current?.setVolume(videoTargetVol.current);
       if (pendingVideoId.current) { const vid = pendingVideoId.current; pendingVideoId.current = null; loadVideo(vid); }
       if (pendingPlaylistId.current) { const pid = pendingPlaylistId.current; pendingPlaylistId.current = null; loadStandbyPlaylist(pid); }
-      else if (currentPlaylistId.current) fadeStandbyVolume(standbyTargetVol.current);
+      else if (currentPlaylistId.current) { standbyRef.current?.unMute(); fadeStandbyVolume(standbyTargetVol.current); }
     }
     setGateFading(true);
     setTimeout(() => setGateVisible(false), 450);
   };
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
-    else document.exitFullscreen().catch(() => {});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = document.documentElement as any, doc = document as any;
+    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
+    } else {
+      (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc)?.catch(() => {});
+    }
   };
 
   if (displaced) {
@@ -579,8 +639,10 @@ export default function PlayerPage() {
         </div>
       )}
 
-      {/* Fullscreen button */}
-      <button id="fullscreen-btn" className={btnVisible ? 'visible' : ''} onClick={toggleFullscreen} title="Enter fullscreen">⛶</button>
+      {/* Fullscreen button — hidden on iOS Safari where the Fullscreen API is unsupported */}
+      {(document.fullscreenEnabled || (document as Document & { webkitFullscreenEnabled?: boolean }).webkitFullscreenEnabled) && (
+        <button id="fullscreen-btn" className={btnVisible ? 'visible' : ''} onClick={toggleFullscreen} title="Enter fullscreen">⛶</button>
+      )}
     </>
   );
 }

@@ -406,6 +406,8 @@ function removeLocalClient(sessionId: string, ws: KaraokeWs): boolean {
 
 // ── Per-session message serialization ────────────────────────────────────────
 const sessionLocks = new Map<string, Promise<void>>();
+// Runtime-only flag: not persisted to Redis, cleared automatically when the player disconnects.
+const sessionPlayerIsIOS = new Map<string, boolean>();
 
 function withSessionLock(sessionId: string, fn: () => Promise<void>): void {
   const previous = sessionLocks.get(sessionId) ?? Promise.resolve();
@@ -509,6 +511,7 @@ async function broadcastState(sessionId: string): Promise<void> {
     standbySubtitleFont:        session.standbySubtitleFont       ?? '',
     standbySubtitleSize:        session.standbySubtitleSize       ?? 0,
     standbySubtitleOutlineSize: session.standbySubtitleOutlineSize ?? 8,
+    playerIsIOS:                 sessionPlayerIsIOS.get(sessionId) ?? false,
   });
 }
 
@@ -980,6 +983,7 @@ wss.on('connection', async (rawWs: WebSocket, req: IncomingMessage) => {
     const wasLocal = removeLocalClient(sessionId!, ws);
     if (wasLocal) await markPresence(sessionId!, role, -1);
     logger.info(`WS disconnect role=${role.padEnd(10)} session=${sid(sessionId)} code=${code} wasLocal=${wasLocal}`);
+    if (role === 'player' && wasLocal) sessionPlayerIsIOS.delete(sessionId!);
     if (wasLocal && (role === 'player' || role === 'controller' || role === 'request')) {
       await broadcastState(sessionId!);
     }
@@ -1267,6 +1271,13 @@ wss.on('connection', async (rawWs: WebSocket, req: IncomingMessage) => {
           session.standbyTrack  = { videoId: trackVideoId, title: (msg.title ?? '').slice(0, 200) };
           session.standbyPaused = false;
           await saveSession(sessionId!, session);
+          await broadcastState(sessionId!);
+          break;
+        }
+
+        case 'player-ios': {
+          if (role !== 'player') break;
+          sessionPlayerIsIOS.set(sessionId!, !!msg.isIOS);
           await broadcastState(sessionId!);
           break;
         }

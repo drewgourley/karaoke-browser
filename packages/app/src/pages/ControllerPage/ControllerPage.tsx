@@ -758,7 +758,7 @@ export default function ControllerPage() {
                   <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={st.standbyVolume}
                     style={{ '--fader-fill': '#00695c', '--pct': st.standbyVolume } as React.CSSProperties}
                     onChange={e => { send({ type: 'set-standby-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                  <div className="fader-hint">Level when idle or between songs</div>
+                  <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level when idle or between songs'}</div>
                 </div>
                 <div className="fader-row">
                   <div className="fader-label-row">
@@ -768,7 +768,7 @@ export default function ControllerPage() {
                   <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={st.videoVolume}
                     style={{ '--fader-fill': '#283593', '--pct': st.videoVolume } as React.CSSProperties}
                     onChange={e => { send({ type: 'set-video-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                  <div className="fader-hint">Level during song playback</div>
+                  <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level during song playback'}</div>
                 </div>
                 <div className="fader-row">
                   <div className="fader-label-row">
