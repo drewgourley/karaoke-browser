@@ -4,7 +4,6 @@ node_modules/
 # build output
 packages/api/dist/
 packages/app/dist/
-packages/shared/dist/
 
 # secrets
 .env
