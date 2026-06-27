@@ -11,7 +11,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@karaoke-browser/shared": ["../shared/src/index.ts"]
+    }
   },
   "references": [
     { "path": "../shared" }
