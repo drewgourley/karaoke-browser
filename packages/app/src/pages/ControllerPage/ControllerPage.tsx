@@ -77,8 +77,13 @@ export default function ControllerPage() {
 
   // ── Server state ─────────────────────────────────────────────────────────
   const [st, setSt] = useState<StateMessage | null>(null);
+  const stRef = useRef<StateMessage | null>(null);
   useEffect(() => {
-    if (lastMessage?.type === 'state') setSt(lastMessage as StateMessage);
+    if (lastMessage?.type === 'state') {
+      const s = lastMessage as StateMessage;
+      setSt(s);
+      stRef.current = s;
+    }
   }, [lastMessage]);
 
   // ── Add-song form ─────────────────────────────────────────────────────────
@@ -211,6 +216,9 @@ export default function ControllerPage() {
       micGain.current = gain;
       micAnalyser.current = analyser;
       micStream.current = stream;
+      // Apply saved mic state before the level timer starts, in case state
+      // arrived before the mic was initialized and applyMicGain was a no-op.
+      if (stRef.current) gain.gain.value = stRef.current.micMuted ? 0 : stRef.current.micVolume / 100;
       const buf = new Uint8Array(analyser.fftSize);
       micLevelTimer.current = setInterval(() => {
         analyser.getByteTimeDomainData(buf);
@@ -327,8 +335,8 @@ export default function ControllerPage() {
     setSingerModal(null); setSingerName('');
   };
 
-  const doSearch = async () => {
-    const q = searchQ.trim();
+  const doSearch = async (overrideQ?: string) => {
+    const q = (overrideQ ?? searchQ).trim();
     if (!q) return;
     setSearching(true); setSearchError(''); setSearchResults([]);
     try {
@@ -340,10 +348,12 @@ export default function ControllerPage() {
   };
 
   const grantRequest = (req: PublicSongRequest) => {
+    const q = [req.artist, req.title].filter(Boolean).join(' ');
     setPendingGrantId(req.id);
     setPendingRequestName(req.name ?? null);
     setAddTab('search');
-    setSearchQ([req.artist, req.title].filter(Boolean).join(' '));
+    setSearchQ(q);
+    doSearch(q);
   };
 
   const openReqLinkModal = async () => {
@@ -424,24 +434,35 @@ export default function ControllerPage() {
       <header>
         <h1>🎤 Karaoke Controller</h1>
         <div className="header-right">
-          <button className="ghost" id="streamdeck-btn" title="Stream Deck plugin setup info" onClick={() => setShowSdModal(true)}>🎮 Stream Deck</button>
-          {st?.requestMode === 'crowd' && (
-            <button className="ghost" id="req-link-btn" title="Get the crowd QR display link" onClick={openReqLinkModal}>🗃️ Crowd QR Display</button>
-          )}
-          {st?.requestMode !== 'crowd' && (
-            <button className="ghost" id="kiosk-link-btn" title="Get the kiosk / request link" onClick={openKioskLinkModal}>🏠 Kiosk Link</button>
-          )}
-          <button className="ghost" id="open-player-btn" title="Open the player in a new tab" onClick={() => window.open('/player', '_blank')}>📺 Open Player</button>
-          {(st?.requesterCount ?? 0) > 0 && (
-            <div className="status status-clickable" id="requester-badge" title="Manage connected devices" onClick={() => setShowDevices(true)}>
-              <div className="dot on"></div>
-              <span id="requester-badge-text">{st?.requestMode === 'kiosk' ? 'Kiosk' : `${st?.requesterCount} Requester${(st?.requesterCount ?? 0) === 1 ? '' : 's'}`}</span>
-            </div>
-          )}
-          {st?.playerConnected && (
-            <div className="status" id="player-up-badge">
-              <div className="dot on"></div>
-              <span>Player</span>
+          <button className="ghost" id="streamdeck-btn" title="Stream Deck plugin setup info" onClick={() => setShowSdModal(true)}>📟 Stream Deck</button>
+          <div
+            className={`status${st?.playerConnected ? '' : ' status-clickable'}`}
+            id="player-badge"
+            title={st?.playerConnected ? 'Player is connected' : 'Open player in a new tab'}
+            onClick={st?.playerConnected ? undefined : () => window.open('/player', '_blank')}
+          >
+            <div className={`dot${st?.playerConnected ? ' on' : ' off'}`}></div>
+            <span>Player</span>
+          </div>
+          {st && (
+            <div
+              className={`status${(st.requesterCount ?? 0) > 0 ? '' : ' status-clickable'}`}
+              id="requester-badge"
+              title={(st.requesterCount ?? 0) > 0
+                ? (st.requestMode === 'kiosk' ? `${st.requesterCount} kiosk(s) connected` : `${st.requesterCount} requester(s) connected`)
+                : (st.requestMode === 'crowd' ? 'Get the crowd QR display link' : 'Get the kiosk / request link')}
+              onClick={(st.requesterCount ?? 0) > 0
+                ? undefined
+                : st.requestMode === 'crowd' ? openReqLinkModal : openKioskLinkModal}
+            >
+              <div className={`dot${(st.requesterCount ?? 0) > 0 ? ' on' : ' off'}`}></div>
+              <span>{st.requestMode === 'kiosk'
+                ? (st.requesterCount ?? 0) > 0
+                  ? `${st.requesterCount} Kiosk${st.requesterCount === 1 ? '' : 's'}`
+                  : 'No Kiosk'
+                : (st.requesterCount ?? 0) > 0
+                  ? `${st.requesterCount} Requester${st.requesterCount === 1 ? '' : 's'}`
+                  : 'Crowd'}</span>
             </div>
           )}
           <div className="status">
@@ -502,7 +523,7 @@ export default function ControllerPage() {
           <div className="card">
             <div className="queue-header">
               <div className="card-label" style={{ marginBottom: 0 }}>Up Next <span className="badge" id="q-count">{queue.length}</span></div>
-              <button className="ghost" id="clear-btn" title="Clear entire queue" style={{ fontSize: '0.75rem' }} onClick={() => { if (queue.length && confirm('Clear queue?')) for (let i = queue.length - 1; i >= 0; i--) send({ type: 'remove', index: i }); }}>Clear all</button>
+              <button className="ghost" id="clear-btn" title="Clear entire queue" style={{ fontSize: '0.75rem' }} onClick={() => { if (queue.length && confirm('Clear queue?')) for (let i = queue.length - 1; i >= 0; i--) send({ type: 'remove', index: i }); }}>✕ Clear</button>
             </div>
             <ul className="queue" id="queue-list">
               {queue.length === 0 ? (
@@ -539,10 +560,15 @@ export default function ControllerPage() {
           <div className="card">
             <div className="find-header">
               <div className="card-label" style={{ marginBottom: 0 }}>Find Song</div>
-              <div className="find-tab-toggle" id="find-tab-toggle" data-tab={addTab}>
-                <span className="find-tab-track"></span>
-                <button className="find-tab-btn" id="tab-search" onClick={() => setAddTab('search')}>🔍 Search</button>
-                <button className="find-tab-btn" id="tab-url" onClick={() => setAddTab('url')}>🔗 Paste URL</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {(searchQ || addUrl || addTitle || searchResults.length > 0) && (
+                  <button className="ghost" id="find-clear-btn" style={{ fontSize: '0.75rem' }} onClick={() => { setSearchQ(''); setAddUrl(''); setAddTitle(''); setSearchResults([]); setSearchError(''); }}>✕ Clear</button>
+                )}
+                <div className="find-tab-toggle" id="find-tab-toggle" data-tab={addTab}>
+                  <span className="find-tab-track"></span>
+                  <button className="find-tab-btn" id="tab-search" onClick={() => setAddTab('search')}>🔍 Search</button>
+                  <button className="find-tab-btn" id="tab-url" onClick={() => setAddTab('url')}>🔗 Paste URL</button>
+                </div>
               </div>
             </div>
 
@@ -552,7 +578,7 @@ export default function ControllerPage() {
                 <label className="karaoke-label" title="Append 'karaoke' to your search">
                   <input type="checkbox" id="karaoke-check" checked={searchKaraoke} onChange={e => setSearchKaraoke(e.target.checked)} /> +karaoke
                 </label>
-                <button id="search-btn" disabled={searching} onClick={doSearch}>{searching ? '…' : 'Search'}</button>
+                <button id="search-btn" disabled={searching} onClick={() => doSearch()}>{searching ? '…' : 'Search'}</button>
               </div>
               {searchError && <div className="empty">{searchError}</div>}
               <div id="search-results">
@@ -710,10 +736,15 @@ export default function ControllerPage() {
               <div className="card">
                 <div className="find-header">
                   <div className="card-label" style={{ marginBottom: 0 }}>Standby Playlist</div>
-                  <div className="find-tab-toggle" id="mx-find-tab-toggle" data-tab={mxTab}>
-                    <span className="find-tab-track"></span>
-                    <button className="find-tab-btn" id="mx-tab-search" onClick={() => setMxTab('search')}>🔍 Search</button>
-                    <button className="find-tab-btn" id="mx-tab-url" onClick={() => setMxTab('url')}>🔗 Paste URL</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {(mxSearchQ || mxUrlInput || mxSearchResults.length > 0) && (
+                      <button className="ghost" id="mx-find-clear-btn" style={{ fontSize: '0.75rem' }} onClick={() => { setMxSearchQ(''); setMxUrlInput(''); setMxSearchResults([]); setMxSearchStatus(''); }}>✕ Clear</button>
+                    )}
+                    <div className="find-tab-toggle" id="mx-find-tab-toggle" data-tab={mxTab}>
+                      <span className="find-tab-track"></span>
+                      <button className="find-tab-btn" id="mx-tab-search" onClick={() => setMxTab('search')}>🔍 Search</button>
+                      <button className="find-tab-btn" id="mx-tab-url" onClick={() => setMxTab('url')}>🔗 Paste URL</button>
+                    </div>
                   </div>
                 </div>
                 <div id="mx-panel-search" style={mxTab === 'search' ? undefined : { display: 'none' }}>
@@ -823,7 +854,7 @@ export default function ControllerPage() {
       {showSdModal && sessionId && (
         <div id="sd-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSdModal(false); }}>
           <div className="modal">
-            <div className="modal-heading">🎮 Stream Deck Setup</div>
+            <div className="modal-heading">📟 Stream Deck Setup</div>
             <p className="req-link-label">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
             <p className="req-link-label" style={{ marginTop: '0.5rem' }}>Server URL</p>
             <div className="req-link-controls">

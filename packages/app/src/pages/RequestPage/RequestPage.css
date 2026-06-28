@@ -166,3 +166,25 @@ input[type="text"]::placeholder { color: var(--muted); }
 /* ── Utility ─────────────────────────────────────────────────────────────── */
 
 .hidden { display: none !important; }
+
+/* ── Fullscreen button ───────────────────────────────────────────────────── */
+
+.fullscreen-btn {
+  position: fixed;
+  bottom: 0.75rem;
+  right: 0.75rem;
+  width: 38px;
+  height: 38px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  z-index: 100;
+}
+.fullscreen-btn:hover { color: var(--text); background: var(--surface); }
+

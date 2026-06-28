@@ -69,4 +69,10 @@ export const api = {
 
   mixerPlaylistItems: (sessionId: string, id: string) =>
     get<PlaylistItemsResponse>(`/api/mixer/playlist-items?s=${encodeURIComponent(sessionId)}&id=${encodeURIComponent(id)}`),
+
+  getAdminVersion: () =>
+    get<{ available: boolean; current: string | null; latest: string | null; behind: number; updateAvailable: boolean }>('/api/admin/version'),
+
+  triggerAdminUpdate: () =>
+    post<{ ok: boolean }>('/api/admin/update'),
 };

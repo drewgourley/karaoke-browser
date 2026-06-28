@@ -33,6 +33,7 @@ export default function DisplayPage() {
   const fullscreenRef = useRef<HTMLButtonElement>(null);
   const hideTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [btnVisible, setBtnVisible] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Fullscreen button hide-on-idle
   useEffect(() => {
@@ -47,9 +48,28 @@ export default function DisplayPage() {
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
-    else document.exitFullscreen().catch(() => {});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = document.documentElement as any, doc = document as any;
+    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
+    } else {
+      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document)?.catch(() => {});
+    }
   };
+
+  useEffect(() => {
+    const onChange = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc = document as any;
+      setIsFullscreen(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
+  }, []);
 
   // Load theme + QR
   useEffect(() => {
@@ -75,9 +95,19 @@ export default function DisplayPage() {
           ref={fullscreenRef}
           className={btnVisible ? 'visible' : ''}
           onClick={toggleFullscreen}
-          title="Enter fullscreen"
+          title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         >
-          ⛶
+          {isFullscreen ? (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="4,14 10,14 10,20" /><polyline points="20,10 14,10 14,4" />
+              <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="15,3 21,3 21,9" /><polyline points="9,21 3,21 3,15" />
+              <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          )}
         </button>
         <div className="display-page" id="error-page">
           <div className="logo">😕</div>
@@ -95,9 +125,19 @@ export default function DisplayPage() {
         ref={fullscreenRef}
         className={btnVisible ? 'visible' : ''}
         onClick={toggleFullscreen}
-        title="Enter fullscreen"
+        title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
       >
-        ⛶
+        {isFullscreen ? (
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="4,14 10,14 10,20" /><polyline points="20,10 14,10 14,4" />
+            <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="15,3 21,3 21,9" /><polyline points="9,21 3,21 3,15" />
+            <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        )}
       </button>
 
       <div className="display-page" id="display-page">

@@ -4,7 +4,7 @@ import { useDeviceToken } from '../../hooks/useDeviceToken.ts';
 import type { ServerMessage, RequestMode } from '@karaoke-browser/shared';
 import './RequestPage.css';
 
-type RequestView = 'invalid' | 'form' | 'blocked' | 'banned' | 'slot-taken' | 'success';
+type RequestView = 'invalid' | 'form' | 'blocked' | 'banned' | 'success';
 
 export default function RequestPage() {
   useEffect(() => {
@@ -26,6 +26,7 @@ export default function RequestPage() {
   const [name, setName]     = useState('');
   const [artist, setArtist] = useState('');
   const [title, setTitle]   = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const wsRef       = useRef<WebSocket | null>(null);
   const retryTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,11 +51,7 @@ export default function RequestPage() {
       if (!isBlockedRef.current) setSubmitDisabled(false);
     };
 
-    ws.onclose = (ev) => {
-      if (ev.code === 4409) {
-        setView('slot-taken');
-        return;
-      }
+    ws.onclose = () => {
       setSubmitDisabled(true);
       setWsError(true);
       retryTimer.current = setTimeout(connect, 3000);
@@ -144,10 +141,49 @@ export default function RequestPage() {
     }
   };
 
-  const handleSlotRetry = () => { setView('form'); connect(); };
+  const toggleFullscreen = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = document.documentElement as any, doc = document as any;
+    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
+    } else {
+      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document)?.catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const onChange = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc = document as any;
+      setIsFullscreen(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
+  }, []);
 
   return (
     <div className="page">
+      {/* Fullscreen toggle — only shown when the API is available */}
+      {(document.fullscreenEnabled || !!(document as any).webkitFullscreenEnabled) && (
+        <button className="fullscreen-btn" onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+          {isFullscreen ? (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="4,14 10,14 10,20" /><polyline points="20,10 14,10 14,4" />
+              <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="15,3 21,3 21,9" /><polyline points="9,21 3,21 3,15" />
+              <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          )}
+        </button>
+      )}
+
       <header>
         <div className="logo">🎤</div>
         <h1>Karaoke Request</h1>
@@ -211,13 +247,7 @@ export default function RequestPage() {
         </div>
       )}
 
-      {view === 'slot-taken' && (
-        <div id="slot-section" className="card">
-          <p className="hint">The kiosk request screen is already open on another device.</p>
-          <button type="button" id="slot-retry-btn" className="btn-primary"
-                  style={{ marginTop: '0.75rem', width: '100%' }} onClick={handleSlotRetry}>Try Again</button>
-        </div>
-      )}
+
     </div>
   );
 }

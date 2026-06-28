@@ -9,8 +9,14 @@ import Redis from 'ioredis';
 import QRCode from 'qrcode';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import type { IncomingMessage } from 'http';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 import type { SessionState, ClientMessage, ServerMessage } from '@karaoke-browser/shared';
+
+const execFileAsync = promisify(execFile);
+// Repo root is three levels above packages/api/dist/app.js
+const REPO_ROOT = path.resolve(__dirname, '../../..');
 
 // ── Extended WebSocket type ───────────────────────────────────────────────────
 interface KaraokeWs extends WebSocket {
@@ -958,16 +964,6 @@ wss.on('connection', async (rawWs: WebSocket, req: IncomingMessage) => {
       return;
     }
     slotHeartbeat = setInterval(() => refreshSlot(sessionId!, role).catch(() => {}), SLOT_HEARTBEAT_MS);
-  } else if (role === 'request' && initSession.requestMode === 'kiosk') {
-    const connId  = randomBytes(8).toString('hex');
-    const claimed = await claimSlot(sessionId!, 'request', connId);
-    if (!claimed) {
-      logger.warn(`WS kiosk slot occupied  session=${sid(sessionId)} ip=${ip}`);
-      ws.close(4409, 'Kiosk already connected');
-      return;
-    }
-    ws._hasRequestSlot = true;
-    slotHeartbeat = setInterval(() => refreshSlot(sessionId!, 'request').catch(() => {}), SLOT_HEARTBEAT_MS);
   }
 
   logger.info(`WS connect    role=${role.padEnd(10)} session=${sid(sessionId)} ip=${ip}`);
@@ -1365,6 +1361,84 @@ wss.on('connection', async (rawWs: WebSocket, req: IncomingMessage) => {
       }
     }); // end withSessionLock
   });
+});
+
+// ── Admin: version check & self-update ───────────────────────────────────────
+
+// GIT_ACCESS_TOKEN: personal access token for pulling from a private repo.
+// Injected into the HTTPS remote URL as: https://x-access-token:TOKEN@host/...
+const GIT_ACCESS_TOKEN = process.env.GIT_ACCESS_TOKEN?.trim() ?? null;
+
+function injectGitToken(url: string, token: string): string {
+  return url.replace(/^(https?:\/\/)/, `$1x-access-token:${encodeURIComponent(token)}@`);
+}
+
+function requireAdmin(req: Request, res: Response): boolean {
+  if (!AUTH_HASH) {
+    res.status(501).json({ error: 'Update features require AUTH_TOKEN_HASH to be configured.' });
+    return false;
+  }
+  if (!hashEqual(getCookie(req, 'kp_auth'), AUTH_HASH)) {
+    res.status(401).json({ error: 'Not authorized.' });
+    return false;
+  }
+  return true;
+}
+
+const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' };
+
+app.get('/api/admin/version', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    // Resolve the authenticated remote URL
+    const { stdout: rawUrl } = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd: REPO_ROOT });
+    const remoteUrl = GIT_ACCESS_TOKEN
+      ? injectGitToken(rawUrl.trim(), GIT_ACCESS_TOKEN)
+      : rawUrl.trim();
+
+    // Fetch without merging so we can count commits behind
+    await execFileAsync('git', ['fetch', remoteUrl, '--quiet'], { cwd: REPO_ROOT, env: GIT_ENV });
+
+    const { stdout: currentRaw } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT });
+    const { stdout: latestRaw  } = await execFileAsync('git', ['rev-parse', '--short', 'FETCH_HEAD'], { cwd: REPO_ROOT });
+    const { stdout: behindRaw  } = await execFileAsync('git', ['rev-list', '--count', 'HEAD..FETCH_HEAD'], { cwd: REPO_ROOT });
+
+    const current = currentRaw.trim();
+    const latest  = latestRaw.trim();
+    const behind  = parseInt(behindRaw.trim(), 10) || 0;
+
+    res.json({ available: true, current, latest, behind, updateAvailable: behind > 0 });
+  } catch (e) {
+    logger.warn('Admin version check failed:', (e as Error).message);
+    res.json({ available: false, current: null, latest: null, behind: 0, updateAvailable: false });
+  }
+});
+
+app.post('/api/admin/update', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!GIT_ACCESS_TOKEN) {
+    res.status(400).json({ error: 'GIT_ACCESS_TOKEN is not configured in .env.' });
+    return;
+  }
+  try {
+    const { stdout: rawUrl } = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd: REPO_ROOT });
+    const remoteUrl = injectGitToken(rawUrl.trim(), GIT_ACCESS_TOKEN);
+    const { stdout: branchRaw } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: REPO_ROOT });
+    const branch = branchRaw.trim();
+
+    logger.info('Admin update: pulling latest code…');
+    await execFileAsync('git', ['pull', remoteUrl, branch], { cwd: REPO_ROOT, env: GIT_ENV });
+
+    logger.info('Admin update: running build…');
+    await execFileAsync('npm', ['run', 'build'], { cwd: REPO_ROOT, timeout: 180_000 });
+
+    logger.info('Admin update: build complete, restarting…');
+    res.json({ ok: true });
+    setTimeout(() => process.exit(0), 400);
+  } catch (e) {
+    logger.error('Admin update failed:', (e as Error).message);
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 // ── Catch-all: serve React SPA ────────────────────────────────────────────────

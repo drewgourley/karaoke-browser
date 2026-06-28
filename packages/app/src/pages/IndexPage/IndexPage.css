@@ -19,9 +19,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
   display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
+  padding: 6rem 1rem 2rem 1rem;
 }
 
 .page {
@@ -29,7 +28,7 @@ body {
   max-width: 480px;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1rem;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -46,7 +45,6 @@ h1 {
   font-size: 1.85rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin-bottom: 0.4rem;
 }
 
 .subtitle {
@@ -130,12 +128,51 @@ h1 {
 }
 
 .section-label {
+  position: relative;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   padding-top: 0.85rem;
   border-top: 1px solid var(--border);
   text-align: center;
+}
+
+.section-label .status {
+  position: absolute;
+  left: 0;
+  top: 0.85rem;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px 4px 8px;
+  border-radius: 20px;
+  background: rgba(100,116,139,0.12);
+  color: var(--muted);
+  transition: background 0.3s, color 0.3s;
+}
+.status:has(.dot.on)  { background: rgba(78,205,196,0.12); color: #4ecdc4; }
+.status:has(.dot.off) { background: rgba(239,71,111,0.12); color: #ef476f; }
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  display: inline-block;
+}
+.dot.on  { background: #4ecdc4; box-shadow: 0 0 5px #4ecdc4; }
+.dot.off { background: #ef476f; }
+
+.link-card .status {
+  align-self: center;
+  margin-top: auto;
+  padding-top: 0.3rem;
 }
 
 #links-section {
@@ -213,7 +250,6 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.75rem 0 0;
 }
 
 .request-link-header {
@@ -240,7 +276,7 @@ h1 {
   transition: border-color 0.2s;
   flex-shrink: 0;
 }
-.mode-toggle:hover  { }
+
 .mode-toggle:hover .mode-option { color: var(--text); }
 .mode-toggle:active { opacity: 0.85; }
 
@@ -321,6 +357,7 @@ h1 {
   flex-direction: column;
   gap: 0.5rem;
   padding-top: 0.6rem;
+  margin-top: 0.6rem;
   border-top: 1px solid var(--border);
 }
 
@@ -399,6 +436,7 @@ h1 {
   max-height: 0;
   transition: max-height 0.3s ease;
 }
+.sd-inline p { margin: 0; }
 .sd-inline.open {
   max-height: 400px;
   padding-top: 0.5rem;
@@ -415,6 +453,75 @@ h1 {
   font-weight: 600;
   color: var(--muted);
   margin: 0;
+}
+
+/* ── Update section ──────────────────────────────────────────────────────── */
+
+.update-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.update-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.update-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.version-hash {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  user-select: all;
+}
+
+.version-badge {
+  border-radius: 20px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.version-badge--behind  { background: rgba(255,209,102,0.15); color: #ffd166; }
+.version-badge--current { background: rgba(78,205,196,0.12);  color: #4ecdc4; }
+
+.btn-update {
+  background: rgba(255,209,102,0.12);
+  color: #ffd166;
+  border: 1px solid rgba(255,209,102,0.3);
+  border-radius: 8px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
+}
+.btn-update:hover { background: rgba(255,209,102,0.2); border-color: rgba(255,209,102,0.5); }
+
+.update-status-text {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.update-error {
+  font-size: 0.78rem;
+  color: var(--danger);
+  font-weight: 600;
+  word-break: break-word;
 }
 
 /* ── Display QR modal ──────────────────────────────────────────────────── */

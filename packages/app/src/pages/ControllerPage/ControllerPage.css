@@ -185,7 +185,7 @@ button.secondary.icon { line-height: 1.5; }
 button.ghost {
   background: transparent;
   color: var(--muted);
-  padding: 0.4rem 0.55rem;
+  padding: 0.35rem 0.55rem;
 }
 button.ghost:hover { color: var(--text); filter: none; }
 

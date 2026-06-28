@@ -44,6 +44,13 @@ export default function IndexPage() {
   const [copySdUrlText, setCopySdUrlText] = useState('Copy');
   const [copySdSidText, setCopySdSidText] = useState('Copy');
   const [sdOpen, setSdOpen]           = useState(false);
+  const [wsPlayerConnected, setWsPlayerConnected]       = useState<boolean | null>(null);
+  const [wsControllerConnected, setWsControllerConnected] = useState<boolean | null>(null);
+  const [wsRequesterCount, setWsRequesterCount]           = useState(0);
+  const [versionInfo, setVersionInfo] = useState<{ current: string; latest: string; behind: number } | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'restarting' | 'error'>('idle');
+  const [updateError, setUpdateError]   = useState('');
+  const updatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const wsRef      = useRef<WebSocket | null>(null);
   const wsTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,8 +68,13 @@ export default function IndexPage() {
     wsRef.current = ws;
     ws.onmessage = (ev: MessageEvent<string>) => {
       try {
-        const msg = JSON.parse(ev.data) as { type: string; requestMode?: RequestMode };
-        if (msg.type === 'state' && msg.requestMode) setRequestMode(msg.requestMode);
+        const msg = JSON.parse(ev.data) as { type: string; requestMode?: RequestMode; playerConnected?: boolean; controllerConnected?: boolean; requesterCount?: number };
+        if (msg.type === 'state') {
+          if (msg.requestMode) setRequestMode(msg.requestMode);
+          if (msg.playerConnected !== undefined) setWsPlayerConnected(msg.playerConnected);
+          if (msg.controllerConnected !== undefined) setWsControllerConnected(msg.controllerConnected);
+          if (msg.requesterCount !== undefined) setWsRequesterCount(msg.requesterCount);
+        }
       } catch { /* ignore */ }
     };
     ws.onclose = () => { wsTimer.current = setTimeout(() => connectIngressWs(sid), 3000); };
@@ -204,6 +216,41 @@ export default function IndexPage() {
     setView('create');
   };
 
+  // ── Version check (auth mode only) ──────────────────────────────────────
+  useEffect(() => {
+    if (view !== 'links' || !authMode) return;
+    setUpdateStatus('checking');
+    api.getAdminVersion()
+      .then(info => {
+        if (info.available && info.current && info.latest)
+          setVersionInfo({ current: info.current, latest: info.latest, behind: info.behind });
+        setUpdateStatus('idle');
+      })
+      .catch(() => setUpdateStatus('idle'));
+  }, [view, authMode]);
+
+  const handleUpdate = async () => {
+    if (!confirm('Pull latest code and rebuild?\nThe server will restart automatically — this takes about a minute.')) return;
+    setUpdateStatus('updating');
+    setUpdateError('');
+    try {
+      await api.triggerAdminUpdate();
+      setUpdateStatus('restarting');
+      updatePollRef.current = setInterval(async () => {
+        try {
+          await api.getAuthStatus();
+          clearInterval(updatePollRef.current!);
+          location.reload();
+        } catch { /* still restarting */ }
+      }, 2500);
+    } catch (e) {
+      setUpdateStatus('error');
+      setUpdateError((e as Error).message.replace(/^POST.*?→.*?$/, 'Build or pull failed — check server logs.'));
+    }
+  };
+
+  useEffect(() => () => { if (updatePollRef.current) clearInterval(updatePollRef.current); }, []);
+
   // ── Copy helpers ─────────────────────────────────────────────────────────
   const copyToClipboard = async (text: string, setter: (s: string) => void) => {
     try {
@@ -261,18 +308,41 @@ export default function IndexPage() {
           <div id="room-links">
             <div className="links-grid">
               <button id="controller-btn" className="link-card" onClick={openController}>
-                <div className="link-icon">🎤</div>
+                <div className="link-icon">🎛️</div>
                 <div className="link-title">Controller</div>
                 <div className="link-desc">Add songs, manage the queue, and control playback</div>
+                {wsControllerConnected !== null && (
+                  <div className="status">
+                    <div className={`dot${wsControllerConnected ? ' on' : ' off'}`}></div>
+                    <span>Controller</span>
+                  </div>
+                )}
               </button>
               <button id="player-btn" className="link-card" onClick={openPlayer}>
                 <div className="link-icon">📺</div>
                 <div className="link-title">Player</div>
                 <div className="link-desc">Fullscreen video player — display on screen or capture in OBS</div>
+                {wsPlayerConnected !== null && (
+                  <div className="status">
+                    <div className={`dot${wsPlayerConnected ? ' on' : ' off'}`}></div>
+                    <span>Player</span>
+                  </div>
+                )}
               </button>
             </div>
 
-            <h3 className="section-label">Requests</h3>
+            <h3 className="section-label">
+              {wsPlayerConnected !== null && (
+                <span className="status">
+                  <span className={`dot${wsRequesterCount > 0 ? ' on' : ' off'}`}></span>
+                  <span>{requestMode === 'kiosk'
+                    ? wsRequesterCount > 0 ? `${wsRequesterCount} Kiosk${wsRequesterCount === 1 ? '' : 's'}` : 'No Kiosk'
+                    : wsRequesterCount > 0 ? `${wsRequesterCount} Requester${wsRequesterCount === 1 ? '' : 's'}` : 'Crowd'
+                  }</span>
+                </span>
+              )}
+              <span>Requests</span>
+            </h3>
             <div id="request-link-row" className="request-link-row">
               <div className="request-link-header">
                 <div className="request-link-label" id="request-link-label">
@@ -316,12 +386,11 @@ export default function IndexPage() {
               )}
             </div>
 
-            <button id="sd-accordion-btn" className="sd-accordion-toggle" onClick={() => setSdOpen(o => !o)}>
-              <span>🎮 Stream Deck</span>
+            <button id="sd-accordion-btn" className={`sd-accordion-toggle${sdOpen ? ' open' : ''}`} onClick={() => setSdOpen(o => !o)}>
+              <span>📟 Stream Deck</span>
               <span className="sd-chevron" style={sdOpen ? { transform: 'rotate(90deg)' } : undefined}>&#x203A;</span>
             </button>
-            {sdOpen && (
-              <div id="sd-content" className="sd-inline">
+            <div id="sd-content" className={`sd-inline${sdOpen ? ' open' : ''}`}>
                 <p className="hint">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
                 <div className="sd-field">
                   <p className="sd-field-label">Server URL</p>
@@ -338,7 +407,29 @@ export default function IndexPage() {
                   </div>
                 </div>
                 <p className="hint">If your server requires a password, enter the Auth Token separately in the plugin inspector.</p>
-              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'links' && authMode && versionInfo && (
+          <div id="update-section" className="update-section">
+            <div className="update-row">
+              <span className="update-meta">
+                <code className="version-hash">{versionInfo.current}</code>
+                {versionInfo.behind > 0
+                  ? <span className="version-badge version-badge--behind">↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</span>
+                  : <span className="version-badge version-badge--current">Up to date</span>
+                }
+              </span>
+              {versionInfo.behind > 0 && updateStatus === 'idle' && (
+                <button id="update-btn" className="btn-update" onClick={handleUpdate}>Update to {versionInfo.latest}</button>
+              )}
+              {(updateStatus === 'updating' || updateStatus === 'restarting') && (
+                <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Building…' : '↺ Restarting…'}</span>
+              )}
+            </div>
+            {updateStatus === 'error' && (
+              <div className="update-error">{updateError}</div>
             )}
           </div>
         )}
