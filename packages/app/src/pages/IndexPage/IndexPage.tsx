@@ -218,7 +218,7 @@ export default function IndexPage() {
 
   // ── Version check (auth mode only) ──────────────────────────────────────
   useEffect(() => {
-    if (view !== 'links' || !authMode) return;
+    if (!authMode || !authStatus?.authed) return;
     setUpdateStatus('checking');
     api.getAdminVersion()
       .then(info => {
@@ -227,7 +227,7 @@ export default function IndexPage() {
         setUpdateStatus('idle');
       })
       .catch(() => setUpdateStatus('idle'));
-  }, [view, authMode]);
+  }, [authMode, authStatus?.authed]);
 
   const handleUpdate = async () => {
     if (!confirm('Pull latest code and rebuild?\nThe server will restart automatically — this takes about a minute.')) return;
@@ -411,29 +411,6 @@ export default function IndexPage() {
           </div>
         )}
 
-        {view === 'links' && authMode && versionInfo && (
-          <div id="update-section" className="update-section">
-            <div className="update-row">
-              <span className="update-meta">
-                <code className="version-hash">{versionInfo.current}</code>
-                {versionInfo.behind > 0
-                  ? <span className="version-badge version-badge--behind">↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</span>
-                  : <span className="version-badge version-badge--current">Up to date</span>
-                }
-              </span>
-              {versionInfo.behind > 0 && updateStatus === 'idle' && (
-                <button id="update-btn" className="btn-update" onClick={handleUpdate}>Update to {versionInfo.latest}</button>
-              )}
-              {(updateStatus === 'updating' || updateStatus === 'restarting') && (
-                <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Building…' : '↺ Restarting…'}</span>
-              )}
-            </div>
-            {updateStatus === 'error' && (
-              <div className="update-error">{updateError}</div>
-            )}
-          </div>
-        )}
-
         {view === 'links' && authMode && (
           <button id="logout-btn" className="btn-ghost btn-logout" onClick={handleLogout}>Log out</button>
         )}
@@ -443,7 +420,29 @@ export default function IndexPage() {
 
       </div>
 
-      {/* ── Request QR modal ── */}
+      {/* ── Fixed update badge ── */}
+      {authMode && versionInfo && (
+        <div id="update-section" className="update-section">
+          <div className="update-row">
+            <span className="update-meta">
+              <code className="version-hash">v.{versionInfo.current}</code>
+              {versionInfo.behind > 0
+                ? <span className="version-badge version-badge--behind">↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</span>
+                : <span className="version-badge version-badge--current">Up to date</span>
+              }
+            </span>
+            {versionInfo.behind > 0 && updateStatus === 'idle' && (
+              <button id="update-btn" className="btn-update" onClick={handleUpdate}>Update to v.{versionInfo.latest}</button>
+            )}
+            {(updateStatus === 'updating' || updateStatus === 'restarting') && (
+              <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Building…' : '↺ Restarting…'}</span>
+            )}
+          </div>
+          {updateStatus === 'error' && (
+            <div className="update-error">{updateError}</div>
+          )}
+        </div>
+      )}
       {showRequestQrModal && (
         <div id="request-qr-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-label="Request form QR code"
              onClick={e => { if (e.target === e.currentTarget) setShowRequestQrModal(false); }}>

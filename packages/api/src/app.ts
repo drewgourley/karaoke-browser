@@ -1399,8 +1399,8 @@ app.get('/api/admin/version', async (req, res) => {
     // Fetch without merging so we can count commits behind
     await execFileAsync('git', ['fetch', remoteUrl, '--quiet'], { cwd: REPO_ROOT, env: GIT_ENV });
 
-    const { stdout: currentRaw } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT });
-    const { stdout: latestRaw  } = await execFileAsync('git', ['rev-parse', '--short', 'FETCH_HEAD'], { cwd: REPO_ROOT });
+    const { stdout: currentRaw } = await execFileAsync('git', ['log', '-1', '--format=%cd', '--date=format:%Y.%m.%d', 'HEAD'],       { cwd: REPO_ROOT });
+    const { stdout: latestRaw  } = await execFileAsync('git', ['log', '-1', '--format=%cd', '--date=format:%Y.%m.%d', 'FETCH_HEAD'], { cwd: REPO_ROOT });
     const { stdout: behindRaw  } = await execFileAsync('git', ['rev-list', '--count', 'HEAD..FETCH_HEAD'], { cwd: REPO_ROOT });
 
     const current = currentRaw.trim();

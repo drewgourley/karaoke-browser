@@ -455,14 +455,22 @@ h1 {
   margin: 0;
 }
 
-/* ── Update section ──────────────────────────────────────────────────────── */
+/* ── Update badge (fixed top-right) ─────────────────────────────────────── */
 
 .update-section {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.75rem 0;
-  border-top: 1px solid var(--border);
+  gap: 0.35rem;
+  max-width: min(320px, calc(100vw - 2rem));
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 .update-row {
@@ -489,9 +497,11 @@ h1 {
 
 .version-badge {
   border-radius: 20px;
-  padding: 0.1rem 0.55rem;
+  padding: 0.2rem 0.55rem;
   font-size: 0.7rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .version-badge--behind  { background: rgba(255,209,102,0.15); color: #ffd166; }
 .version-badge--current { background: rgba(78,205,196,0.12);  color: #4ecdc4; }
