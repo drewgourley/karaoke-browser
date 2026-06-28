@@ -365,8 +365,11 @@ export default function PlayerPage() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      // Older iOS/iPadOS has "iPad/iPhone/iPod" in UA.
+      // Modern iPadOS (13+) spoofs a Mac UA, so also check maxTouchPoints
+      // against "Mac" in the UA string (more reliable than deprecated navigator.platform).
       const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.userAgent));
       ws.send(JSON.stringify({ type: 'player-ios', isIOS: ios }));
     };
 
