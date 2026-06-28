@@ -1389,6 +1389,13 @@ const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' 
 
 app.get('/api/admin/version', async (req, res) => {
   if (!requireAdmin(req, res)) return;
+
+  // ?fake=1 — returns a stubbed "2 commits behind" response for UI iteration.
+  if (req.query['fake'] === '1') {
+    res.json({ available: true, current: '2026.01.01', latest: '2026.06.28', behind: 2, updateAvailable: true });
+    return;
+  }
+
   try {
     const { stdout: rawUrl } = await execFileAsync('git', ['remote', 'get-url', 'origin'], { cwd: REPO_ROOT });
     const remoteUrl = GIT_ACCESS_TOKEN
@@ -1423,6 +1430,14 @@ app.get('/api/admin/version', async (req, res) => {
 
 app.post('/api/admin/update', async (req, res) => {
   if (!requireAdmin(req, res)) return;
+
+  // ?fake=1 — simulates a ~3 s build then responds without touching git or npm.
+  if (req.query['fake'] === '1') {
+    await new Promise(r => setTimeout(r, 3000));
+    res.json({ ok: true });
+    return;
+  }
+
   if (!GIT_ACCESS_TOKEN) {
     res.status(400).json({ error: 'GIT_ACCESS_TOKEN is not configured in .env.' });
     return;

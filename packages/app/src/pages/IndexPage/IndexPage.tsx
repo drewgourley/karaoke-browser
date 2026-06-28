@@ -50,6 +50,8 @@ export default function IndexPage() {
   const [versionInfo, setVersionInfo] = useState<{ current: string; latest: string; behind: number } | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'restarting' | 'error'>('idle');
   const [updateError, setUpdateError]   = useState('');
+  const [fakeUpdate, setFakeUpdate]     = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const updatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const wsRef      = useRef<WebSocket | null>(null);
@@ -220,21 +222,21 @@ export default function IndexPage() {
   useEffect(() => {
     if (!authMode || !authStatus?.authed) return;
     setUpdateStatus('checking');
-    api.getAdminVersion()
+    api.getAdminVersion(fakeUpdate)
       .then(info => {
         if (info.available && info.current && info.latest)
           setVersionInfo({ current: info.current, latest: info.latest, behind: info.behind });
         setUpdateStatus('idle');
       })
       .catch(() => setUpdateStatus('idle'));
-  }, [authMode, authStatus?.authed]);
+  }, [authMode, authStatus?.authed, fakeUpdate]);
 
   const handleUpdate = async () => {
-    if (!confirm('Pull latest code and rebuild?\nThe server will restart automatically — this takes about a minute.')) return;
+    setShowUpdateModal(false);
     setUpdateStatus('updating');
     setUpdateError('');
     try {
-      await api.triggerAdminUpdate();
+      await api.triggerAdminUpdate(fakeUpdate);
       setUpdateStatus('restarting');
       updatePollRef.current = setInterval(async () => {
         try {
@@ -337,7 +339,7 @@ export default function IndexPage() {
                   <span className={`dot${wsRequesterCount > 0 ? ' on' : ' off'}`}></span>
                   <span>{requestMode === 'kiosk'
                     ? wsRequesterCount > 0 ? `${wsRequesterCount} Kiosk${wsRequesterCount === 1 ? '' : 's'}` : 'No Kiosk'
-                    : wsRequesterCount > 0 ? `${wsRequesterCount} Requester${wsRequesterCount === 1 ? '' : 's'}` : 'Crowd'
+                    : wsRequesterCount > 0 ? `${wsRequesterCount} Requester${wsRequesterCount === 1 ? '' : 's'}` : 'No Requesters'
                   }</span>
                 </span>
               )}
@@ -427,13 +429,15 @@ export default function IndexPage() {
             <span className="update-meta">
               <code className="version-hash">v.{versionInfo.current}</code>
               {versionInfo.behind > 0
-                ? <span className="version-badge version-badge--behind">↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</span>
+                ? <button className="version-badge version-badge--behind version-badge--clickable" onClick={() => setShowUpdateModal(true)}>↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</button>
                 : <span className="version-badge version-badge--current">Up to date</span>
               }
+              <button
+                className="btn-fake-toggle"
+                title={fakeUpdate ? 'Using fake stub — click to use real git' : 'Click to fake an available update'}
+                onClick={() => { setVersionInfo(null); setUpdateStatus('idle'); setFakeUpdate(f => !f); }}
+              >{fakeUpdate ? '[✕ fake]' : '[fake]'}</button>
             </span>
-            {versionInfo.behind > 0 && updateStatus === 'idle' && (
-              <button id="update-btn" className="btn-update" onClick={handleUpdate}>Update to v.{versionInfo.latest}</button>
-            )}
             {(updateStatus === 'updating' || updateStatus === 'restarting') && (
               <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Building…' : '↺ Restarting…'}</span>
             )}
@@ -441,6 +445,24 @@ export default function IndexPage() {
           {updateStatus === 'error' && (
             <div className="update-error">{updateError}</div>
           )}
+        </div>
+      )}
+
+      {/* ── Update confirm modal ── */}
+      {showUpdateModal && versionInfo && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirm update"
+             onClick={e => { if (e.target === e.currentTarget) setShowUpdateModal(false); }}>
+          <div className="modal">
+            <div className="modal-header-row">
+              <span className="modal-heading">Update Available</span>
+              <button className="btn-modal-close" aria-label="Close" onClick={() => setShowUpdateModal(false)}>&times;</button>
+            </div>
+            <p className="modal-hint">Would you like to update to the latest version?<br /><code className="version-hash">v.{versionInfo.current}</code> → <code className="version-hash">v.{versionInfo.latest}</code></p>
+            <div className="modal-actions">
+              <button className="btn-modal-secondary" onClick={() => setShowUpdateModal(false)}>Cancel</button>
+              <button className="btn-update" onClick={handleUpdate}>Update</button>
+            </div>
+          </div>
         </div>
       )}
       {showRequestQrModal && (

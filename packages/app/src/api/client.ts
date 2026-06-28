@@ -70,9 +70,9 @@ export const api = {
   mixerPlaylistItems: (sessionId: string, id: string) =>
     get<PlaylistItemsResponse>(`/api/mixer/playlist-items?s=${encodeURIComponent(sessionId)}&id=${encodeURIComponent(id)}`),
 
-  getAdminVersion: () =>
-    get<{ available: boolean; current: string | null; latest: string | null; behind: number; updateAvailable: boolean }>('/api/admin/version'),
+  getAdminVersion: (fake = false) =>
+    get<{ available: boolean; current: string | null; latest: string | null; behind: number; updateAvailable: boolean }>(`/api/admin/version${fake ? '?fake=1' : ''}`),
 
-  triggerAdminUpdate: () =>
-    post<{ ok: boolean }>('/api/admin/update'),
+  triggerAdminUpdate: (fake = false) =>
+    post<{ ok: boolean }>(`/api/admin/update${fake ? '?fake=1' : ''}`),
 };

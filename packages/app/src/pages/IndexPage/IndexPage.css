@@ -469,7 +469,6 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  max-width: min(320px, calc(100vw - 2rem));
   box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
@@ -506,6 +505,15 @@ h1 {
 .version-badge--behind  { background: rgba(255,209,102,0.15); color: #ffd166; }
 .version-badge--current { background: rgba(78,205,196,0.12);  color: #4ecdc4; }
 
+.version-badge--clickable {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: filter 0.15s, transform 0.1s;
+}
+.version-badge--clickable:hover  { filter: brightness(1.25); }
+.version-badge--clickable:active { transform: scale(0.97); }
+
 .btn-update {
   background: rgba(255,209,102,0.12);
   color: #ffd166;
@@ -526,6 +534,40 @@ h1 {
   color: var(--muted);
   font-style: italic;
 }
+
+.btn-fake-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  opacity: 0.45;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+.btn-fake-toggle:hover { opacity: 0.9; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.btn-modal-secondary {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-modal-secondary:hover { background: rgba(255,255,255,0.06); color: var(--text); }
 
 .update-error {
   font-size: 0.78rem;
