@@ -189,6 +189,23 @@ button.ghost {
 }
 button.ghost:hover { color: var(--text); filter: none; }
 
+.fullscreen-btn {
+  width: 38px;
+  height: 38px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+.fullscreen-btn:hover { color: var(--text); background: var(--surface); filter: none; }
+
 /* ── Add form ───────────────────────────────────────────────────────────── */
 .add-form { display: flex; flex-direction: column; gap: 0.6rem; }
 

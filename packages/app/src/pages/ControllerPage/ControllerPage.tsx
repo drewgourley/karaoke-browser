@@ -4,6 +4,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../context/SessionContext.tsx';
 import { useWebSocket } from '../../hooks/useWebSocket.ts';
+import { useWakeLock } from '../../hooks/useWakeLock.ts';
 import { api } from '../../api/client.ts';
 import type { StateMessage, ClientMessage, QueueItem, PublicSongRequest, SearchResult, PlaylistSearchResult } from '@karaoke-browser/shared';
 import './ControllerPage.css';
@@ -138,6 +139,22 @@ export default function ControllerPage() {
   const [mxHeight, setMxHeight] = useState(() => parseInt(localStorage.getItem('kk_mixer_h') ?? '0') || MX_DEFAULT_H);
   const mxDragStart = useRef<{ y: number; h: number } | null>(null);
   const mxDragged   = useRef(false);
+
+  // ── Fullscreen ────────────────────────────────────────────────────────────
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+  useWakeLock(isFullscreen);
 
   const [mxTab, setMxTab]           = useState<'search' | 'url'>('search');
   const [mxUrlInput, setMxUrlInput] = useState('');
@@ -501,6 +518,19 @@ export default function ControllerPage() {
             <div className={`dot${connected ? ' on' : ''}`} id="dot"></div>
             <span id="status-text">{connected ? 'Connected' : 'Connecting…'}</span>
           </div>
+          <button className="fullscreen-btn" id="fullscreen-btn" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={toggleFullscreen}>
+            {isFullscreen ? (
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="4,14 10,14 10,20" /><polyline points="20,10 14,10 14,4" />
+                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="15,3 21,3 21,9" /><polyline points="9,21 3,21 3,15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
+          </button>
         </div>
       </header>
 

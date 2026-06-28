@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../context/SessionContext.tsx';
+import { useWakeLock } from '../../hooks/useWakeLock.ts';
 import type { StateMessage } from '@karaoke-browser/shared';
 import './PlayerPage.css';
 
@@ -117,6 +118,7 @@ export default function PlayerPage() {
   const [controllerDot, setControllerDot] = useState(false);
   const [btnVisible, setBtnVisible]   = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  useWakeLock(isFullscreen);
 
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

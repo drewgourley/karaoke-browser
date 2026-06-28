@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDeviceToken } from '../../hooks/useDeviceToken.ts';
+import { useWakeLock } from '../../hooks/useWakeLock.ts';
 import type { ServerMessage, RequestMode } from '@karaoke-browser/shared';
 import './RequestPage.css';
 
@@ -27,6 +28,7 @@ export default function RequestPage() {
   const [artist, setArtist] = useState('');
   const [title, setTitle]   = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  useWakeLock(isFullscreen);
 
   const wsRef       = useRef<WebSocket | null>(null);
   const retryTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
