@@ -277,9 +277,41 @@ export default function ControllerPage() {
         });
       }
     };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!mxDragStart.current) return;
+      const delta = mxDragStart.current.y - e.touches[0].clientY;
+      if (Math.abs(delta) > 5) mxDragged.current = true;
+      if (!mxDragged.current) return;
+      e.preventDefault();
+      const newH = Math.max(MX_HANDLE_H, Math.min(Math.floor(window.innerHeight * 0.8), mxDragStart.current.h + delta));
+      setMxHeight(newH);
+    };
+    const onTouchEnd = () => {
+      if (!mxDragStart.current) return;
+      const wasDrag = mxDragged.current;
+      mxDragStart.current = null;
+      mxDragged.current = false;
+      if (!wasDrag) {
+        setMxOpen(o => { const n = !o; localStorage.setItem('kk_mixer_open', String(n)); return n; });
+      } else {
+        setMxHeight(h => {
+          const isClosed = h <= MX_HANDLE_H + 30;
+          setMxOpen(!isClosed);
+          if (!isClosed) { localStorage.setItem('kk_mixer_h', String(h)); localStorage.setItem('kk_mixer_open', 'true'); }
+          return isClosed ? MX_HANDLE_H : h;
+        });
+      }
+    };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
   }, []);
 
   // ── Load playlist tracks ──────────────────────────────────────────────────
@@ -668,6 +700,11 @@ export default function ControllerPage() {
             mxDragStart.current = { y: e.clientY, h: mxOpen ? mxHeight : MX_HANDLE_H };
             document.body.style.userSelect = 'none';
             document.body.style.cursor = 'ns-resize';
+            e.preventDefault();
+          }}
+          onTouchStart={e => {
+            mxDragged.current = false;
+            mxDragStart.current = { y: e.touches[0].clientY, h: mxOpen ? mxHeight : MX_HANDLE_H };
             e.preventDefault();
           }}
         >
