@@ -7,6 +7,7 @@ packages/app/dist/
 
 # secrets
 .env
+.env.development
 ecosystem.config.js
 
 # logs

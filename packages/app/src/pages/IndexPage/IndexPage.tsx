@@ -432,7 +432,7 @@ export default function IndexPage() {
                 ? <button className="version-badge version-badge--behind version-badge--clickable" onClick={() => setShowUpdateModal(true)}>↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</button>
                 : <span className="version-badge version-badge--current">Up to date</span>
               }
-              {import.meta.env.DEV && (
+              {import.meta.env.VITE_DEV_TOOLS && (
                 <button
                   className="btn-fake-toggle"
                   title={fakeUpdate ? 'Using fake stub — click to use real git' : 'Click to fake an available update'}
