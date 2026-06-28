@@ -593,11 +593,11 @@ export default function PlayerPage() {
         </div>
       </div>
 
-      {/* Main YT player target — pre-created as <iframe> so referrerpolicy is set before YouTube loads its embed URL (fixes Error 153 on iOS WKWebView) */}
-      <iframe id="yt-player" title="YouTube Player" referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen" />
+      {/* Main YT player target */}
+      <div id="yt-player" />
 
       {/* Hidden standby audio player target */}
-      <iframe id="standby-player" title="Standby Audio Player" referrerPolicy="strict-origin-when-cross-origin" allow="autoplay" />
+      <div id="standby-player" />
 
       {/* Embed error overlay */}
       <div id="embed-error">
