@@ -1,18 +1,28 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Requests a Screen Wake Lock while `enabled` is true.
- * Wake locks are automatically released by the browser when the page is
- * hidden; this hook re-acquires the lock on `visibilitychange` so it stays
- * active after the user returns to the tab/app.
+ * Requests a Screen Wake Lock while `enabled` is true, or whenever the page
+ * is running as a PWA in standalone mode (covers iOS "Add to Home Screen",
+ * where programmatic fullscreen is unavailable so `isFullscreen` stays false).
  *
- * Silently no-ops when the Wake Lock API is unavailable (older browsers).
+ * Wake locks are released by the browser when the page is hidden; this hook
+ * re-acquires on `visibilitychange` so it stays active after the user returns.
+ *
+ * Silently no-ops when the Wake Lock API is unavailable (pre-16.4 iOS, Firefox
+ * Android). For older-iOS support add the `nosleep.js` package as a fallback.
  */
 export function useWakeLock(enabled: boolean): void {
   const lockRef = useRef<WakeLockSentinel | null>(null);
 
+  // PWA standalone mode = iOS "Add to Home Screen" full-screen equivalent.
+  const isStandalone =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(display-mode: standalone)').matches;
+
+  const shouldEnable = enabled || isStandalone;
+
   useEffect(() => {
-    if (!enabled || !('wakeLock' in navigator)) return;
+    if (!shouldEnable || !('wakeLock' in navigator)) return;
 
     let active = true;
 
@@ -43,5 +53,5 @@ export function useWakeLock(enabled: boolean): void {
       lockRef.current?.release().catch(() => {});
       lockRef.current = null;
     };
-  }, [enabled]);
+  }, [shouldEnable]);
 }
