@@ -432,11 +432,13 @@ export default function IndexPage() {
                 ? <button className="version-badge version-badge--behind version-badge--clickable" onClick={() => setShowUpdateModal(true)}>↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</button>
                 : <span className="version-badge version-badge--current">Up to date</span>
               }
-              <button
-                className="btn-fake-toggle"
-                title={fakeUpdate ? 'Using fake stub — click to use real git' : 'Click to fake an available update'}
-                onClick={() => { setVersionInfo(null); setUpdateStatus('idle'); setFakeUpdate(f => !f); }}
-              >{fakeUpdate ? '[✕ fake]' : '[fake]'}</button>
+              {import.meta.env.DEV && (
+                <button
+                  className="btn-fake-toggle"
+                  title={fakeUpdate ? 'Using fake stub — click to use real git' : 'Click to fake an available update'}
+                  onClick={() => { setVersionInfo(null); setUpdateStatus('idle'); setFakeUpdate(f => !f); }}
+                >{fakeUpdate ? '[✕ fake]' : '[fake]'}</button>
+              )}
             </span>
             {(updateStatus === 'updating' || updateStatus === 'restarting') && (
               <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Building…' : '↺ Restarting…'}</span>
