@@ -1074,7 +1074,7 @@ a.btn:hover { filter: brightness(1.2); }
 .ss-size-field input[type="number"]:focus { border-color: var(--accent); }
 .ss-size-field input[type="number"]::-webkit-inner-spin-button,
 .ss-size-field input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
-.ss-size-field input[type="number"] { -moz-appearance: textfield; }
+.ss-size-field input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* Color + preview row */
 .ss-color-preview-row {
