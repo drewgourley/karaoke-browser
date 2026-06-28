@@ -493,10 +493,9 @@ export default function PlayerPage() {
             }
           },
           onError: (e: { data: number }) => {
-            if (e.data === 100 || e.data === 101 || e.data === 150) {
-              if (currentVideoId.current) showEmbedError(currentVideoId.current);
-              wsRef.current?.send(JSON.stringify({ type: 'video-error', code: e.data }));
-            }
+            // 100: not found, 101/150: embedding disabled, 153: mobile/WKWebView restriction
+            if (currentVideoId.current) showEmbedError(currentVideoId.current);
+            wsRef.current?.send(JSON.stringify({ type: 'video-error', code: e.data }));
           },
         },
       });
@@ -594,11 +593,11 @@ export default function PlayerPage() {
         </div>
       </div>
 
-      {/* Main YT player target */}
-      <div id="yt-player" />
+      {/* Main YT player target — pre-created as <iframe> so referrerpolicy is set before YouTube loads its embed URL (fixes Error 153 on iOS WKWebView) */}
+      <iframe id="yt-player" title="YouTube Player" referrerPolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen" />
 
       {/* Hidden standby audio player target */}
-      <div id="standby-player" />
+      <iframe id="standby-player" title="Standby Audio Player" referrerPolicy="strict-origin-when-cross-origin" allow="autoplay" />
 
       {/* Embed error overlay */}
       <div id="embed-error">
