@@ -467,11 +467,12 @@ export default function PlayerPage() {
     window.onYouTubeIframeAPIReady = () => {
       ytRef.current = new window.YT.Player('yt-player', {
         width: '100%', height: '100%',
-        // mute:1 allows autoplay on mobile (browsers permit muted autoplay without a gesture);
-        // unMute() is called inside the gate-tap handler which runs in a user-gesture context.
-        playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, showinfo: 0, cc_load_policy: 0, fs: 0, disablekb: 1, playsinline: 1, enablejsapi: 1, mute: 1 },
+        playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, showinfo: 0, cc_load_policy: 0, fs: 0, disablekb: 1, playsinline: 1 },
         events: {
           onReady: () => {
+            // Mute via API rather than playerVar so iOS doesn't enter "muted-embed" mode,
+            // which causes Error 153 on some videos. unMute() is called in handleGateTap.
+            ytRef.current?.mute();
             if (pendingVideoId.current && userActivated.current) {
               const vid = pendingVideoId.current; pendingVideoId.current = null; loadVideo(vid);
             }
@@ -499,9 +500,10 @@ export default function PlayerPage() {
 
       standbyRef.current = new window.YT.Player('standby-player', {
         width: '1', height: '1',
-        playerVars: { autoplay: 1, controls: 0, loop: 1, fs: 0, disablekb: 1, playsinline: 1, rel: 0, mute: 1 },
+        playerVars: { autoplay: 1, controls: 0, loop: 1, fs: 0, disablekb: 1, playsinline: 1, rel: 0 },
         events: {
           onReady: () => {
+            standbyRef.current?.mute();
             standbyRef.current?.setVolume(0);
             if (pendingPlaylistId.current) { const pid = pendingPlaylistId.current; pendingPlaylistId.current = null; loadStandbyPlaylist(pid); }
           },
