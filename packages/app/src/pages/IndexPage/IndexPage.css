@@ -515,6 +515,11 @@ h1 {
 }
 .version-badge--clickable:hover  { filter: brightness(1.25); }
 .version-badge--clickable:active { transform: scale(0.97); }
+.version-badge--clickable:disabled { cursor: default; filter: none; transform: none; }
+
+@keyframes badge-spin { to { transform: rotate(360deg); } }
+.badge-refresh-icon { display: inline-block; }
+.badge-refresh-icon--spinning { animation: badge-spin 0.7s linear infinite; }
 
 .btn-update {
   background: rgba(255,209,102,0.12);

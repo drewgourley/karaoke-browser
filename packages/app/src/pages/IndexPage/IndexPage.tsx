@@ -219,17 +219,20 @@ export default function IndexPage() {
   };
 
   // ── Version check (auth mode only) ──────────────────────────────────────
-  useEffect(() => {
+  const checkForUpdates = useCallback(async () => {
     if (!authMode || !authStatus?.authed) return;
     setUpdateStatus('checking');
-    api.getAdminVersion(fakeUpdate)
-      .then(info => {
-        if (info.available && info.current && info.latest)
-          setVersionInfo({ current: info.current, latest: info.latest, behind: info.behind });
-        setUpdateStatus('idle');
-      })
-      .catch(() => setUpdateStatus('idle'));
+    try {
+      const info = await api.getAdminVersion(fakeUpdate);
+      if (info.available && info.current && info.latest)
+        setVersionInfo({ current: info.current, latest: info.latest, behind: info.behind });
+      setUpdateStatus('idle');
+    } catch {
+      setUpdateStatus('idle');
+    }
   }, [authMode, authStatus?.authed, fakeUpdate]);
+
+  useEffect(() => { void checkForUpdates(); }, [checkForUpdates]);
 
   const handleUpdate = async () => {
     setShowUpdateModal(false);
@@ -430,7 +433,7 @@ export default function IndexPage() {
               <code className="version-hash">v.{versionInfo.current}</code>
               {versionInfo.behind > 0
                 ? <button className="version-badge version-badge--behind version-badge--clickable" onClick={() => setShowUpdateModal(true)}>↑ {versionInfo.behind} update{versionInfo.behind !== 1 ? 's' : ''} available</button>
-                : <span className="version-badge version-badge--current">Up to date</span>
+                : <button className="version-badge version-badge--current version-badge--clickable" onClick={checkForUpdates} title="Check for updates" disabled={updateStatus === 'checking'}><span className={`badge-refresh-icon${updateStatus === 'checking' ? ' badge-refresh-icon--spinning' : ''}`}>↻</span> Up to date</button>
               }
               {import.meta.env.VITE_DEV_TOOLS && (
                 <button
