@@ -142,11 +142,14 @@ export default function ControllerPage() {
 
   // ── Fullscreen ────────────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const { enable: wakeLockEnable, disable: wakeLockDisable } = useWakeLock();
   useEffect(() => {
     const onChange = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const doc = document as any;
-      setIsFullscreen(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
+      const fs = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+      setIsFullscreen(fs);
+      if (!fs) wakeLockDisable();
     };
     document.addEventListener('fullscreenchange', onChange);
     document.addEventListener('webkitfullscreenchange', onChange);
@@ -154,17 +157,18 @@ export default function ControllerPage() {
       document.removeEventListener('fullscreenchange', onChange);
       document.removeEventListener('webkitfullscreenchange', onChange);
     };
-  }, []);
+  }, [wakeLockDisable]);
   const toggleFullscreen = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const el = document.documentElement as any, doc = document as any;
     if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
       (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
+      wakeLockEnable();
     } else {
       (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document)?.catch(() => {});
+      wakeLockDisable();
     }
   };
-  useWakeLock(isFullscreen);
 
   const [mxTab, setMxTab]           = useState<'search' | 'url'>('search');
   const [mxUrlInput, setMxUrlInput] = useState('');

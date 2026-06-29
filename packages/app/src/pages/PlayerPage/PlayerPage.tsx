@@ -118,7 +118,7 @@ export default function PlayerPage() {
   const [controllerDot, setControllerDot] = useState(false);
   const [btnVisible, setBtnVisible]   = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  useWakeLock(isFullscreen);
+  const { enable: wakeLockEnable, disable: wakeLockDisable } = useWakeLock();
 
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -143,7 +143,9 @@ export default function PlayerPage() {
     const onChange = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const doc = document as any;
-      setIsFullscreen(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
+      const fs = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+      setIsFullscreen(fs);
+      if (!fs) wakeLockDisable();
     };
     document.addEventListener('fullscreenchange', onChange);
     document.addEventListener('webkitfullscreenchange', onChange);
@@ -151,7 +153,7 @@ export default function PlayerPage() {
       document.removeEventListener('fullscreenchange', onChange);
       document.removeEventListener('webkitfullscreenchange', onChange);
     };
-  }, []);
+  }, [wakeLockDisable]);
 
   // ── Standby helpers ────────────────────────────────────────────────────
   const fadeStandbyVolume = useCallback((target: number) => {
@@ -578,8 +580,10 @@ export default function PlayerPage() {
     const el = document.documentElement as any, doc = document as any;
     if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
       (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
+      wakeLockEnable();
     } else {
       (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc)?.catch(() => {});
+      wakeLockDisable();
     }
   };
 

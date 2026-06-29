@@ -1,38 +1,47 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import NoSleep from 'nosleep.js';
 
 /**
- * Keeps the screen awake while `enabled` is true, or whenever the page is
- * running as a PWA in standalone mode (covers iOS "Add to Home Screen").
+ * Returns `{ enable, disable }` functions that MUST be called directly from
+ * user-interaction handlers (click / touchstart). iOS Safari enforces that
+ * video.play() — the nosleep fallback — happens synchronously within a user
+ * gesture; calling it from a useEffect breaks that chain and silently fails.
  *
- * Uses the Wake Lock API where available, with an automatic video-loop
- * fallback for browsers that don't support it (pre-16.4 iOS, Firefox Android).
- * Powered by nosleep.js which handles all the edge cases.
+ * Also auto-enables on the first touch when running as a PWA in standalone
+ * mode, since that's the iOS equivalent of fullscreen.
  */
-export function useWakeLock(enabled: boolean): void {
-  const noSleepRef = useRef<InstanceType<typeof NoSleep> | null>(null);
+export function useWakeLock(): { enable: () => void; disable: () => void } {
+  const nsRef = useRef<InstanceType<typeof NoSleep> | null>(null);
 
-  // PWA standalone mode = iOS "Add to Home Screen" full-screen equivalent.
-  const isStandalone =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(display-mode: standalone)').matches;
+  const getOrCreate = () => {
+    if (!nsRef.current) nsRef.current = new NoSleep();
+    return nsRef.current;
+  };
 
-  const shouldEnable = enabled || isStandalone;
+  const enable = useCallback(() => {
+    getOrCreate().enable().catch(() => {});
+  }, []);
 
+  const disable = useCallback(() => {
+    nsRef.current?.disable();
+  }, []);
+
+  // In PWA standalone mode, auto-enable on the very first user touch so iOS
+  // gets the wake lock without needing a dedicated fullscreen button.
   useEffect(() => {
-    if (!noSleepRef.current) {
-      noSleepRef.current = new NoSleep();
-    }
-    const ns = noSleepRef.current;
-
-    if (shouldEnable) {
-      ns.enable().catch(() => {});
-    } else {
-      ns.disable();
-    }
-
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    if (!isStandalone) return;
+    const onFirstTouch = () => { getOrCreate().enable().catch(() => {}); };
+    document.addEventListener('touchstart', onFirstTouch, { once: true });
+    document.addEventListener('click',      onFirstTouch, { once: true });
     return () => {
-      ns.disable();
+      document.removeEventListener('touchstart', onFirstTouch);
+      document.removeEventListener('click',      onFirstTouch);
     };
-  }, [shouldEnable]);
+  }, []);
+
+  // Cleanup on unmount.
+  useEffect(() => () => { nsRef.current?.disable(); }, []);
+
+  return { enable, disable };
 }
