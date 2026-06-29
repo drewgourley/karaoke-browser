@@ -1433,7 +1433,7 @@ app.post('/api/admin/update', async (req, res) => {
 
   // ?fake=1 — simulates a ~3 s build then responds without touching git or npm.
   if (req.query['fake'] === '1') {
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 5000));
     res.json({ ok: true });
     return;
   }
@@ -1450,6 +1450,9 @@ app.post('/api/admin/update', async (req, res) => {
 
     logger.info('Admin update: pulling latest code…');
     await execFileAsync('git', ['pull', remoteUrl, branch], { cwd: REPO_ROOT, env: GIT_ENV });
+
+    logger.info('Admin update: installing dependencies…');
+    await execFileAsync('npm', ['install'], { cwd: REPO_ROOT, timeout: 120_000 });
 
     logger.info('Admin update: running build…');
     await execFileAsync('npm', ['run', 'build'], { cwd: REPO_ROOT, timeout: 180_000 });

@@ -441,7 +441,7 @@ export default function IndexPage() {
               )}
             </span>
             {(updateStatus === 'updating' || updateStatus === 'restarting') && (
-              <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Building…' : '↺ Restarting…'}</span>
+              <span className="update-status-text">{updateStatus === 'updating' ? '⚙ Installing & building…' : '↺ Restarting…'}</span>
             )}
           </div>
           {updateStatus === 'error' && (
