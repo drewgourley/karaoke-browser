@@ -762,157 +762,157 @@ export default function ControllerPage() {
         </div>
         {mxOpen && st && (
           <div className="mixer-body">
-
-            {/* Col 1: Standby now playing */}
-            <div className="col">
-              <div className="card">
-                <div className="queue-header" style={{ marginBottom: '0.9rem' }}>
-                  <div className="card-label" style={{ marginBottom: 0 }}>Standby Music</div>
-                  <button className="ghost" id="standby-settings-btn" style={{ fontSize: '0.75rem' }} onClick={openSsModal}>🎨 Customize Standby Screen</button>
-                </div>
-                <div id="standby-now-playing">
-                  {!st.standbyPlaylistId ? (
-                    <span className="np-idle">No playlist set</span>
-                  ) : (
-                    <div className="np-wrap">
-                      {st.standbyTrack?.videoId
-                        ? <img className="np-thumb" src={`https://img.youtube.com/vi/${st.standbyTrack.videoId}/hqdefault.jpg`} alt="" />
-                        : st.standbyPlaylistThumbnail
-                          ? <img className="np-thumb" src={st.standbyPlaylistThumbnail} alt="" />
-                          : <div className="np-thumb np-thumb-placeholder">🎵</div>
-                      }
-                      <div className="np-info">
-                        <div className="np-title">{st.standbyTrack?.title ?? st.standbyPlaylistTitle ?? st.standbyPlaylistId}</div>
-                        <div className="np-singer">🎵 {st.standbyPlaylistTitle ?? 'Standby Music'}</div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="row np-controls">
-                    <button className="secondary icon" disabled={!st.standbyPlaylistId || !st.playerConnected} onClick={() => send({ type: st.standbyPaused ? 'standby-resume' : 'standby-pause' })}>
-                      {st.standbyPaused ? '▶ Play' : '⏸ Pause'}
-                    </button>
-                    <button className="secondary icon" disabled={!st.standbyPlaylistId || !st.playerConnected} onClick={() => send({ type: 'standby-skip' })}>⏭ Skip</button>
+            <div className="mixer-main">
+              {/* Col 1: Standby now playing */}
+              <div className="col">
+                <div className="card">
+                  <div className="queue-header" style={{ marginBottom: '0.9rem' }}>
+                    <div className="card-label" style={{ marginBottom: 0 }}>Standby Music</div>
+                    <button className="ghost" id="standby-settings-btn" style={{ fontSize: '0.75rem' }} onClick={openSsModal}>🎨 Customize Standby Screen</button>
                   </div>
-                </div>
-              </div>
-              {st.standbyPlaylistId && (
-                <div className="card" id="standby-track-card">
-                  <div className="queue-header">
-                    <div className="card-label" style={{ marginBottom: 0 }}>
-                      Playlist Tracks <span className="badge" id="standby-track-count">{mxTracks.length}</span>
-                    </div>
-                    <button className="ghost" id="clear-standby-btn" title="Clear standby playlist" style={{ fontSize: '0.75rem' }} onClick={() => send({ type: 'clear-standby' })}>Clear</button>
-                  </div>
-                  <ul className="queue" id="standby-track-list">
-                    {mxTracks.map((t, i) => (
-                      <li key={t.videoId} className={`qi${st.standbyTrack?.videoId === t.videoId ? ' qi-current' : ''}`}>
-                        <span className="qi-num">{i + 1}</span>
-                        <img className="qi-thumb" src={t.thumbnail || thumb(t.videoId)} alt="" loading="lazy" />
-                        <div className="qi-info"><span className="qi-title">{t.title}</span></div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {/* Col 2: Standby playlist */}
-            <div className="col">
-              <div className="card">
-                <div className="find-header">
-                  <div className="card-label" style={{ marginBottom: 0 }}>Standby Playlist</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {(mxSearchQ || mxUrlInput || mxSearchResults.length > 0) && (
-                      <button className="ghost" id="mx-find-clear-btn" style={{ fontSize: '0.75rem' }} onClick={() => { setMxSearchQ(''); setMxUrlInput(''); setMxSearchResults([]); setMxSearchStatus(''); }}>✕ Clear</button>
-                    )}
-                    <div className="find-tab-toggle" id="mx-find-tab-toggle" data-tab={mxTab}>
-                      <span className="find-tab-track"></span>
-                      <button className="find-tab-btn" id="mx-tab-search" onClick={() => setMxTab('search')}>🔍 Search</button>
-                      <button className="find-tab-btn" id="mx-tab-url" onClick={() => setMxTab('url')}>🔗 Paste URL</button>
-                    </div>
-                  </div>
-                </div>
-                <div id="mx-panel-search" style={mxTab === 'search' ? undefined : { display: 'none' }}>
-                  <div className="row">
-                    <input type="text" id="mx-search-input" value={mxSearchQ} onChange={e => setMxSearchQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && mxDoSearch()} placeholder="Search for a playlist…" autoComplete="off" />
-                    <button id="mx-search-btn" disabled={mxSearching} onClick={mxDoSearch}>{mxSearching ? '…' : 'Search'}</button>
-                  </div>
-                  {mxSearchStatus && <div id="mx-search-status" className="mixer-search-status">{mxSearchStatus}</div>}
-                  <div id="mx-search-results">
-                    {mxSearchResults.map(item => (
-                      <div key={item.playlistId} className="sr-item">
-                        <img className="sr-thumb" src={item.thumbnail} alt="" loading="lazy" />
-                        <div className="sr-info">
-                          <div className="sr-title">{item.title}</div>
-                          <div className="sr-channel">{item.channelTitle}</div>
+                  <div id="standby-now-playing">
+                    {!st.standbyPlaylistId ? (
+                      <span className="np-idle">No playlist set</span>
+                    ) : (
+                      <div className="np-wrap">
+                        {st.standbyTrack?.videoId
+                          ? <img className="np-thumb" src={`https://img.youtube.com/vi/${st.standbyTrack.videoId}/hqdefault.jpg`} alt="" />
+                          : st.standbyPlaylistThumbnail
+                            ? <img className="np-thumb" src={st.standbyPlaylistThumbnail} alt="" />
+                            : <div className="np-thumb np-thumb-placeholder">🎵</div>
+                        }
+                        <div className="np-info">
+                          <div className="np-title">{st.standbyTrack?.title ?? st.standbyPlaylistTitle ?? st.standbyPlaylistId}</div>
+                          <div className="np-singer">🎵 {st.standbyPlaylistTitle ?? 'Standby Music'}</div>
                         </div>
-                        <button className="secondary" onClick={() => send({ type: 'set-standby-playlist', url: `https://www.youtube.com/playlist?list=${item.playlistId}`, title: item.title, thumbnail: item.thumbnail })}>Use</button>
                       </div>
-                    ))}
+                    )}
+                    <div className="row np-controls">
+                      <button className="secondary icon" disabled={!st.standbyPlaylistId || !st.playerConnected} onClick={() => send({ type: st.standbyPaused ? 'standby-resume' : 'standby-pause' })}>
+                        {st.standbyPaused ? '▶ Play' : '⏸ Pause'}
+                      </button>
+                      <button className="secondary icon" disabled={!st.standbyPlaylistId || !st.playerConnected} onClick={() => send({ type: 'standby-skip' })}>⏭ Skip</button>
+                    </div>
                   </div>
                 </div>
-                <div id="mx-panel-url" style={mxTab === 'url' ? undefined : { display: 'none' }}>
-                  <div className="add-form">
+                {st.standbyPlaylistId && (
+                  <div className="card" id="standby-track-card">
+                    <div className="queue-header">
+                      <div className="card-label" style={{ marginBottom: 0 }}>
+                        Playlist Tracks <span className="badge" id="standby-track-count">{mxTracks.length}</span>
+                      </div>
+                      <button className="ghost" id="clear-standby-btn" title="Clear standby playlist" style={{ fontSize: '0.75rem' }} onClick={() => send({ type: 'clear-standby' })}>Clear</button>
+                    </div>
+                    <ul className="queue" id="standby-track-list">
+                      {mxTracks.map((t, i) => (
+                        <li key={t.videoId} className={`qi${st.standbyTrack?.videoId === t.videoId ? ' qi-current' : ''}`}>
+                          <span className="qi-num">{i + 1}</span>
+                          <img className="qi-thumb" src={t.thumbnail || thumb(t.videoId)} alt="" loading="lazy" />
+                          <div className="qi-info"><span className="qi-title">{t.title}</span></div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Col 2: Standby playlist */}
+              <div className="col">
+                <div className="card">
+                  <div className="find-header">
+                    <div className="card-label" style={{ marginBottom: 0 }}>Standby Playlist</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {(mxSearchQ || mxUrlInput || mxSearchResults.length > 0) && (
+                        <button className="ghost" id="mx-find-clear-btn" style={{ fontSize: '0.75rem' }} onClick={() => { setMxSearchQ(''); setMxUrlInput(''); setMxSearchResults([]); setMxSearchStatus(''); }}>✕ Clear</button>
+                      )}
+                      <div className="find-tab-toggle" id="mx-find-tab-toggle" data-tab={mxTab}>
+                        <span className="find-tab-track"></span>
+                        <button className="find-tab-btn" id="mx-tab-search" onClick={() => setMxTab('search')}>🔍 Search</button>
+                        <button className="find-tab-btn" id="mx-tab-url" onClick={() => setMxTab('url')}>🔗 Paste URL</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="mx-panel-search" style={mxTab === 'search' ? undefined : { display: 'none' }}>
                     <div className="row">
-                      <input type="url" id="mx-url-input" value={mxUrlInput} onChange={e => setMxUrlInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && mxUrlInput.trim()) { send({ type: 'set-standby-playlist', url: mxUrlInput.trim(), title: '', thumbnail: '' }); setMxUrlInput(''); } }} placeholder="Paste a YouTube playlist URL…" autoComplete="off" />
-                      <button id="mx-set-btn" onClick={() => { if (mxUrlInput.trim()) { send({ type: 'set-standby-playlist', url: mxUrlInput.trim(), title: '', thumbnail: '' }); setMxUrlInput(''); } }}>Set</button>
+                      <input type="text" id="mx-search-input" value={mxSearchQ} onChange={e => setMxSearchQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && mxDoSearch()} placeholder="Search for a playlist…" autoComplete="off" />
+                      <button id="mx-search-btn" disabled={mxSearching} onClick={mxDoSearch}>{mxSearching ? '…' : 'Search'}</button>
+                    </div>
+                    {mxSearchStatus && <div id="mx-search-status" className="mixer-search-status">{mxSearchStatus}</div>}
+                    <div id="mx-search-results">
+                      {mxSearchResults.map(item => (
+                        <div key={item.playlistId} className="sr-item">
+                          <img className="sr-thumb" src={item.thumbnail} alt="" loading="lazy" />
+                          <div className="sr-info">
+                            <div className="sr-title">{item.title}</div>
+                            <div className="sr-channel">{item.channelTitle}</div>
+                          </div>
+                          <button className="secondary" onClick={() => send({ type: 'set-standby-playlist', url: `https://www.youtube.com/playlist?list=${item.playlistId}`, title: item.title, thumbnail: item.thumbnail })}>Use</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div id="mx-panel-url" style={mxTab === 'url' ? undefined : { display: 'none' }}>
+                    <div className="add-form">
+                      <div className="row">
+                        <input type="url" id="mx-url-input" value={mxUrlInput} onChange={e => setMxUrlInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && mxUrlInput.trim()) { send({ type: 'set-standby-playlist', url: mxUrlInput.trim(), title: '', thumbnail: '' }); setMxUrlInput(''); } }} placeholder="Paste a YouTube playlist URL…" autoComplete="off" />
+                        <button id="mx-set-btn" onClick={() => { if (mxUrlInput.trim()) { send({ type: 'set-standby-playlist', url: mxUrlInput.trim(), title: '', thumbnail: '' }); setMxUrlInput(''); } }}>Set</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Col 3: Volume faders */}
+              <div className="col">
+                <div className="card">
+                  <div className="card-label">Volume</div>
+                  <div className="fader-row">
+                    <div className="fader-label-row">
+                      <span>🎵 Standby Music</span>
+                      <span className="fader-val" id="standby-vol-value">{st.standbyVolume}</span>
+                    </div>
+                    <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={st.standbyVolume}
+                      style={{ '--fader-fill': '#00695c', '--pct': st.standbyVolume } as React.CSSProperties}
+                      onChange={e => { send({ type: 'set-standby-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                    <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level when idle or between songs'}</div>
+                  </div>
+                  <div className="fader-row">
+                    <div className="fader-label-row">
+                      <span>🎤 Karaoke Video</span>
+                      <span className="fader-val" id="video-vol-value">{st.videoVolume}</span>
+                    </div>
+                    <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={st.videoVolume}
+                      style={{ '--fader-fill': '#283593', '--pct': st.videoVolume } as React.CSSProperties}
+                      onChange={e => { send({ type: 'set-video-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                    <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level during song playback'}</div>
+                  </div>
+                  <div className="fader-row">
+                    <div className="fader-label-row">
+                      <span className="fader-mic-label">
+                        <label className="toggle-switch" title="Mute microphone">
+                          <input type="checkbox" id="mic-mute-btn" checked={!micMuted} disabled={!micReady} onChange={() => send({ type: 'mic-mute', muted: !micMuted })} />
+                          <span className="toggle-track"></span>
+                        </label>
+                        🎙️ Microphone
+                        <span className={`status-dot-sm${micReady && !micMuted ? ' on' : ''}`} id="mic-status-dot"></span>
+                      </span>
+                      <span className="fader-val" id="mic-vol-value">{micVol}</span>
+                    </div>
+                    <input type="range" id="mic-vol-slider" className="fader" min="0" max="100" value={micVol} disabled={!micReady}
+                      style={{ '--fader-fill': '#880e4f', '--pct': micVol } as React.CSSProperties}
+                      onChange={e => { send({ type: 'set-mic-volume', volume: Number(e.target.value) }); applyMicGain(Number(e.target.value), micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                    <div className="vu-meter" id="mic-vu-meter">
+                      {Array.from({ length: VU_DOTS }, (_, i) => (
+                        <span key={i} className={`vu-dot ${i < 15 ? 'vu-green' : i < 19 ? 'vu-yellow' : 'vu-red'}${(i <= vuLevel || (i === vuPeak && vuPeak > vuLevel)) ? ' lit' : ''}${(i === vuPeak && vuPeak > vuLevel) ? ' peak' : ''}`} />
+                      ))}
+                    </div>
+                    <div className="fader-hint" id="mic-hint">
+                      {micReady === null ? 'Awaiting player…' : micReady === false ? 'Permission denied or unavailable' : micMuted ? 'Muted' : 'Active'}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Col 3: Volume faders */}
-            <div className="col">
-              <div className="card">
-                <div className="card-label">Volume</div>
-                <div className="fader-row">
-                  <div className="fader-label-row">
-                    <span>🎵 Standby Music</span>
-                    <span className="fader-val" id="standby-vol-value">{st.standbyVolume}</span>
-                  </div>
-                  <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={st.standbyVolume}
-                    style={{ '--fader-fill': '#00695c', '--pct': st.standbyVolume } as React.CSSProperties}
-                    onChange={e => { send({ type: 'set-standby-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                  <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level when idle or between songs'}</div>
-                </div>
-                <div className="fader-row">
-                  <div className="fader-label-row">
-                    <span>🎤 Karaoke Video</span>
-                    <span className="fader-val" id="video-vol-value">{st.videoVolume}</span>
-                  </div>
-                  <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={st.videoVolume}
-                    style={{ '--fader-fill': '#283593', '--pct': st.videoVolume } as React.CSSProperties}
-                    onChange={e => { send({ type: 'set-video-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                  <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level during song playback'}</div>
-                </div>
-                <div className="fader-row">
-                  <div className="fader-label-row">
-                    <span className="fader-mic-label">
-                      <label className="toggle-switch" title="Mute microphone">
-                        <input type="checkbox" id="mic-mute-btn" checked={!micMuted} disabled={!micReady} onChange={() => send({ type: 'mic-mute', muted: !micMuted })} />
-                        <span className="toggle-track"></span>
-                      </label>
-                      🎙️ Microphone
-                      <span className={`status-dot-sm${micReady && !micMuted ? ' on' : ''}`} id="mic-status-dot"></span>
-                    </span>
-                    <span className="fader-val" id="mic-vol-value">{micVol}</span>
-                  </div>
-                  <input type="range" id="mic-vol-slider" className="fader" min="0" max="100" value={micVol} disabled={!micReady}
-                    style={{ '--fader-fill': '#880e4f', '--pct': micVol } as React.CSSProperties}
-                    onChange={e => { send({ type: 'set-mic-volume', volume: Number(e.target.value) }); applyMicGain(Number(e.target.value), micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                  <div className="vu-meter" id="mic-vu-meter">
-                    {Array.from({ length: VU_DOTS }, (_, i) => (
-                      <span key={i} className={`vu-dot ${i < 15 ? 'vu-green' : i < 19 ? 'vu-yellow' : 'vu-red'}${(i <= vuLevel || (i === vuPeak && vuPeak > vuLevel)) ? ' lit' : ''}${(i === vuPeak && vuPeak > vuLevel) ? ' peak' : ''}`} />
-                    ))}
-                  </div>
-                  <div className="fader-hint" id="mic-hint">
-                    {micReady === null ? 'Awaiting player…' : micReady === false ? 'Permission denied or unavailable' : micMuted ? 'Muted' : 'Active'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
         )}
       </div>
