@@ -10,7 +10,7 @@ import type { StateMessage, ClientMessage, QueueItem, PublicSongRequest, SearchR
 import './ControllerPage.css';
 
 // ── Constants ────────────────────────────────────────────────────────────
-const MX_HANDLE_H  = 40;
+const MX_HANDLE_H  = 48;
 const MX_DEFAULT_H = 320;
 const VU_DOTS      = 20;
 
