@@ -44,9 +44,11 @@ export default function IndexPage() {
   const [copySdUrlText, setCopySdUrlText] = useState('Copy');
   const [copySdSidText, setCopySdSidText] = useState('Copy');
   const [sdOpen, setSdOpen]           = useState(false);
+  const [reqOpen, setReqOpen]         = useState(false);
   const [wsPlayerConnected, setWsPlayerConnected]       = useState<boolean | null>(null);
   const [wsControllerConnected, setWsControllerConnected] = useState<boolean | null>(null);
   const [wsRequesterCount, setWsRequesterCount]           = useState(0);
+  const [wsStreamDeckConnected, setWsStreamDeckConnected] = useState<boolean | null>(null);
   const [versionInfo, setVersionInfo] = useState<{ current: string; latest: string; behind: number } | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'restarting' | 'error'>('idle');
   const [updateError, setUpdateError]   = useState('');
@@ -70,12 +72,13 @@ export default function IndexPage() {
     wsRef.current = ws;
     ws.onmessage = (ev: MessageEvent<string>) => {
       try {
-        const msg = JSON.parse(ev.data) as { type: string; requestMode?: RequestMode; playerConnected?: boolean; controllerConnected?: boolean; requesterCount?: number };
+        const msg = JSON.parse(ev.data) as { type: string; requestMode?: RequestMode; playerConnected?: boolean; controllerConnected?: boolean; requesterCount?: number; streamDeckConnected?: boolean };
         if (msg.type === 'state') {
           if (msg.requestMode) setRequestMode(msg.requestMode);
           if (msg.playerConnected !== undefined) setWsPlayerConnected(msg.playerConnected);
           if (msg.controllerConnected !== undefined) setWsControllerConnected(msg.controllerConnected);
           if (msg.requesterCount !== undefined) setWsRequesterCount(msg.requesterCount);
+          if (msg.streamDeckConnected !== undefined) setWsStreamDeckConnected(msg.streamDeckConnected);
         }
       } catch { /* ignore */ }
     };
@@ -336,7 +339,13 @@ export default function IndexPage() {
               </button>
             </div>
 
-            <h3 className="section-label">
+            <h3
+              className={`section-label sd-section-label${reqOpen ? ' open' : ''}`}
+              onClick={() => setReqOpen(o => !o)}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setReqOpen(o => !o)}
+              tabIndex={0}
+              role="button"
+            >
               {wsPlayerConnected !== null && (
                 <span className="status">
                   <span className={`dot${wsRequesterCount > 0 ? ' on' : ' off'}`}></span>
@@ -346,9 +355,10 @@ export default function IndexPage() {
                   }</span>
                 </span>
               )}
-              <span>Requests</span>
+              🎵 Requests
+              <span className="sd-chevron">&#x203A;</span>
             </h3>
-            <div id="request-link-row" className="request-link-row">
+            <div className={`sd-inline${reqOpen ? ' open' : ''}`}>
               <div className="request-link-header">
                 <div className="request-link-label" id="request-link-label">
                   {requestMode === 'kiosk'
@@ -391,10 +401,23 @@ export default function IndexPage() {
               )}
             </div>
 
-            <button id="sd-accordion-btn" className={`sd-accordion-toggle${sdOpen ? ' open' : ''}`} onClick={() => setSdOpen(o => !o)}>
-              <span>📟 Stream Deck</span>
-              <span className="sd-chevron" style={sdOpen ? { transform: 'rotate(90deg)' } : undefined}>&#x203A;</span>
-            </button>
+            <h3
+              id="sd-accordion-btn"
+              className={`section-label sd-section-label${sdOpen ? ' open' : ''}`}
+              onClick={() => setSdOpen(o => !o)}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setSdOpen(o => !o)}
+              tabIndex={0}
+              role="button"
+            >
+              {wsStreamDeckConnected !== null && (
+                <span className="status" title={wsStreamDeckConnected ? 'Stream Deck connected' : 'Stream Deck not connected'}>
+                  <span className={`dot${wsStreamDeckConnected ? ' on' : ' off'}`}></span>
+                  <span>{wsStreamDeckConnected ? 'Connected' : 'Not connected'}</span>
+                </span>
+              )}
+              📟 Stream Deck
+              <span className="sd-chevron">&#x203A;</span>
+            </h3>
             <div id="sd-content" className={`sd-inline${sdOpen ? ' open' : ''}`}>
                 <p className="hint">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
                 <div className="sd-field">

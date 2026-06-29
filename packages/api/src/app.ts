@@ -460,12 +460,12 @@ async function publishRaw(sessionId: string, data: ServerMessage): Promise<void>
 async function broadcastState(sessionId: string): Promise<void> {
   const [session, presenceArr] = await Promise.all([
     getSession(sessionId),
-    redis.hmget(K.presence(sessionId), 'player', 'controller', 'request'),
+    redis.hmget(K.presence(sessionId), 'player', 'controller', 'request', 'mixer'),
   ]);
   if (!session) return;
 
   const localSet = localClients.get(sessionId);
-  const liveLocal = { player: 0, controller: 0, request: 0 };
+  const liveLocal = { player: 0, controller: 0, request: 0, mixer: 0 };
   if (localSet) {
     for (const c of localSet) {
       if (c.readyState === 1 && c.role in liveLocal) {
@@ -476,6 +476,7 @@ async function broadcastState(sessionId: string): Promise<void> {
   const playerCount     = Math.max(Number(presenceArr[0]) || 0, liveLocal.player);
   const controllerCount = Math.max(Number(presenceArr[1]) || 0, liveLocal.controller);
   const requestCount    = Math.max(Number(presenceArr[2]) || 0, liveLocal.request);
+  const mixerCount      = Math.max(Number(presenceArr[3]) || 0, liveLocal.mixer);
 
   if (controllerCount === 0) {
     logger.warn(`broadcastState controllerConnected=false  session=${sid(sessionId)}`);
@@ -518,6 +519,7 @@ async function broadcastState(sessionId: string): Promise<void> {
     standbySubtitleSize:        session.standbySubtitleSize       ?? 0,
     standbySubtitleOutlineSize: session.standbySubtitleOutlineSize ?? 8,
     playerIsIOS:                 sessionPlayerIsIOS.get(sessionId) ?? false,
+    streamDeckConnected:         mixerCount > 0,
   });
 }
 

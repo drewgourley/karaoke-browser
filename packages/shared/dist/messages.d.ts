@@ -151,6 +151,7 @@ export interface StateMessage {
     standbySubtitleSize: number;
     standbySubtitleOutlineSize: number;
     playerIsIOS: boolean;
+    streamDeckConnected: boolean;
 }
 export interface DeviceStatusMessage {
     type: 'device-status';

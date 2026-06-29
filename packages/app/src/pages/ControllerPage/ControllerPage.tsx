@@ -497,26 +497,21 @@ export default function ControllerPage() {
       <header>
         <h1>🎤 Karaoke Controller</h1>
         <div className="header-right">
-          <button className="ghost" id="streamdeck-btn" title="Stream Deck plugin setup info" onClick={() => setShowSdModal(true)}>📟 Stream Deck</button>
           <div
-            className={`status${st?.playerConnected ? '' : ' status-clickable'}`}
-            id="player-badge"
-            title={st?.playerConnected ? 'Player is connected' : 'Open player in a new tab'}
-            onClick={st?.playerConnected ? undefined : () => window.open('/player', '_blank')}
-          >
-            <div className={`dot${st?.playerConnected ? ' on' : ' off'}`}></div>
-            <span>Player</span>
-          </div>
+              className="status status-clickable"
+              id="streamdeck-badge"
+              title={st?.streamDeckConnected ? 'Stream Deck connected — click for setup info' : 'Stream Deck not connected — click for setup info'}
+              onClick={() => setShowSdModal(true)}
+            >
+              <div className={`dot${st?.streamDeckConnected ? ' on' : ' off'}`}></div>
+              <span>Stream Deck</span>
+            </div>
           {st && (
             <div
-              className={`status${(st.requesterCount ?? 0) > 0 ? '' : ' status-clickable'}`}
+              className="status status-clickable"
               id="requester-badge"
-              title={(st.requesterCount ?? 0) > 0
-                ? (st.requestMode === 'kiosk' ? `${st.requesterCount} kiosk(s) connected` : `${st.requesterCount} requester(s) connected`)
-                : (st.requestMode === 'crowd' ? 'Get the crowd QR display link' : 'Get the kiosk / request link')}
-              onClick={(st.requesterCount ?? 0) > 0
-                ? undefined
-                : st.requestMode === 'crowd' ? openReqLinkModal : openKioskLinkModal}
+              title={st.requestMode === 'crowd' ? 'Get the crowd QR display link' : 'Get the kiosk / request link'}
+              onClick={st.requestMode === 'crowd' ? openReqLinkModal : openKioskLinkModal}
             >
               <div className={`dot${(st.requesterCount ?? 0) > 0 ? ' on' : ' off'}`}></div>
               <span>{st.requestMode === 'kiosk'
@@ -528,6 +523,15 @@ export default function ControllerPage() {
                   : 'No Requesters'}</span>
             </div>
           )}
+          <div
+            className={`status${st?.playerConnected ? '' : ' status-clickable'}`}
+            id="player-badge"
+            title={st?.playerConnected ? 'Player is connected' : 'Open player in a new tab'}
+            onClick={st?.playerConnected ? undefined : () => window.open('/player', '_blank')}
+          >
+            <div className={`dot${st?.playerConnected ? ' on' : ' off'}`}></div>
+            <span>Player</span>
+          </div>
           <div className="status">
             <div className={`dot${connected ? ' on' : ''}`} id="dot"></div>
             <span id="status-text">{connected ? 'Connected' : 'Connecting…'}</span>
