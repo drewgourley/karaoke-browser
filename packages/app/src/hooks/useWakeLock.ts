@@ -1,18 +1,16 @@
 import { useEffect, useRef } from 'react';
+import NoSleep from 'nosleep.js';
 
 /**
- * Requests a Screen Wake Lock while `enabled` is true, or whenever the page
- * is running as a PWA in standalone mode (covers iOS "Add to Home Screen",
- * where programmatic fullscreen is unavailable so `isFullscreen` stays false).
+ * Keeps the screen awake while `enabled` is true, or whenever the page is
+ * running as a PWA in standalone mode (covers iOS "Add to Home Screen").
  *
- * Wake locks are released by the browser when the page is hidden; this hook
- * re-acquires on `visibilitychange` so it stays active after the user returns.
- *
- * Silently no-ops when the Wake Lock API is unavailable (pre-16.4 iOS, Firefox
- * Android). For older-iOS support add the `nosleep.js` package as a fallback.
+ * Uses the Wake Lock API where available, with an automatic video-loop
+ * fallback for browsers that don't support it (pre-16.4 iOS, Firefox Android).
+ * Powered by nosleep.js which handles all the edge cases.
  */
 export function useWakeLock(enabled: boolean): void {
-  const lockRef = useRef<WakeLockSentinel | null>(null);
+  const noSleepRef = useRef<InstanceType<typeof NoSleep> | null>(null);
 
   // PWA standalone mode = iOS "Add to Home Screen" full-screen equivalent.
   const isStandalone =
@@ -22,36 +20,19 @@ export function useWakeLock(enabled: boolean): void {
   const shouldEnable = enabled || isStandalone;
 
   useEffect(() => {
-    if (!shouldEnable || !('wakeLock' in navigator)) return;
+    if (!noSleepRef.current) {
+      noSleepRef.current = new NoSleep();
+    }
+    const ns = noSleepRef.current;
 
-    let active = true;
-
-    const acquire = async () => {
-      if (!active || document.visibilityState !== 'visible') return;
-      try {
-        lockRef.current = await navigator.wakeLock.request('screen');
-        lockRef.current.addEventListener('release', () => {
-          lockRef.current = null;
-        });
-      } catch {
-        // Permission denied or API unavailable — fail silently.
-      }
-    };
-
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible' && !lockRef.current) {
-        void acquire();
-      }
-    };
-
-    void acquire();
-    document.addEventListener('visibilitychange', onVisibility);
+    if (shouldEnable) {
+      ns.enable().catch(() => {});
+    } else {
+      ns.disable();
+    }
 
     return () => {
-      active = false;
-      document.removeEventListener('visibilitychange', onVisibility);
-      lockRef.current?.release().catch(() => {});
-      lockRef.current = null;
+      ns.disable();
     };
   }, [shouldEnable]);
 }
