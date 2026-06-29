@@ -224,13 +224,14 @@ button.ghost:hover { color: var(--text); filter: none; }
   flex-shrink: 0;
 }
 .np-info { flex: 1; min-width: 0; }
+#now-playing { display: flex; flex-direction: column; gap: 0.625rem; }
+.np-controls { flex-wrap: nowrap; }
+.np-controls button { flex: 1; justify-content: center; }
 .np-title {
   font-weight: 600;
-  font-size: 0.95rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 0.5rem;
+  font-size: 1.15rem;
+  overflow-wrap: break-word;
+  margin-bottom: 0.35rem;
 }
 .np-idle { color: var(--muted); font-style: italic; }
 
@@ -455,7 +456,7 @@ a.btn:hover { filter: brightness(1.2); }
 }
 
 /* ── Now-playing singer ─────────────────────────────────────────────────── */
-.np-singer { font-size: 0.78rem; color: var(--accent); margin-bottom: 0.4rem; }
+.np-singer { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.4rem; }
 
 /* ── Queue item singer ──────────────────────────────────────────────────── */
 .qi-info  { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }

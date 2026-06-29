@@ -525,7 +525,7 @@ export default function ControllerPage() {
                   : 'No Kiosk'
                 : (st.requesterCount ?? 0) > 0
                   ? `${st.requesterCount} Requester${st.requesterCount === 1 ? '' : 's'}`
-                  : 'Crowd'}</span>
+                  : 'No Requesters'}</span>
             </div>
           )}
           <div className="status">
@@ -583,16 +583,16 @@ export default function ControllerPage() {
                   <div className="np-info">
                     <div className="np-title" title={np.title}>{np.title}</div>
                     {np.singer && <div className="np-singer">🎤 {np.singer}</div>}
-                    <div className="row">
-                      <button className="secondary icon" disabled={!st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: 'restart' })}>↺ Restart</button>
-                      <button className="secondary icon" disabled={!st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: st?.paused ? 'resume' : 'pause' })}>
-                        {(!st?.playerConnected || st?.paused) ? '▶ Begin' : '⏸ Pause'}
-                      </button>
-                      <button className="secondary icon" disabled={!st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: 'next' })}>⏭ Skip</button>
-                    </div>
                   </div>
                 </div>
               )}
+              <div className="row np-controls">
+                <button className="secondary icon" disabled={!np || !!np?.embedError || !st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: 'restart' })}>↺ Restart</button>
+                <button className="secondary icon" disabled={!np || !!np?.embedError || !st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: st?.paused ? 'resume' : 'pause' })}>
+                  {(!st?.playerConnected || st?.paused) ? '▶ Begin' : '⏸ Pause'}
+                </button>
+                <button className="secondary icon" disabled={!np || !!np?.embedError || !st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: 'next' })}>⏭ Skip</button>
+              </div>
             </div>
           </div>
 
