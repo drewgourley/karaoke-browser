@@ -784,15 +784,15 @@ export default function ControllerPage() {
                       <div className="np-info">
                         <div className="np-title">{st.standbyTrack?.title ?? st.standbyPlaylistTitle ?? st.standbyPlaylistId}</div>
                         <div className="np-singer">🎵 {st.standbyPlaylistTitle ?? 'Standby Music'}</div>
-                        <div className="row">
-                          <button className="secondary icon" disabled={!st.playerConnected} onClick={() => send({ type: st.standbyPaused ? 'standby-resume' : 'standby-pause' })}>
-                            {st.standbyPaused ? '▶ Play' : '⏸ Pause'}
-                          </button>
-                          <button className="secondary icon" disabled={!st.playerConnected} onClick={() => send({ type: 'standby-skip' })}>⏭ Skip</button>
-                        </div>
                       </div>
                     </div>
                   )}
+                  <div className="row np-controls">
+                    <button className="secondary icon" disabled={!st.standbyPlaylistId || !st.playerConnected} onClick={() => send({ type: st.standbyPaused ? 'standby-resume' : 'standby-pause' })}>
+                      {st.standbyPaused ? '▶ Play' : '⏸ Pause'}
+                    </button>
+                    <button className="secondary icon" disabled={!st.standbyPlaylistId || !st.playerConnected} onClick={() => send({ type: 'standby-skip' })}>⏭ Skip</button>
+                  </div>
                 </div>
               </div>
               {st.standbyPlaylistId && (
