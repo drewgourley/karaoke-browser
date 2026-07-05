@@ -156,12 +156,13 @@ export default function PlayerPage() {
   }, [wakeLockDisable]);
 
   // ── Standby helpers ────────────────────────────────────────────────────
-  const fadeStandbyVolume = useCallback((target: number) => {
+  const fadeStandbyVolume = useCallback((target: number, durationOverrideMs?: number) => {
     if (!standbyRef.current) return;
     if (standbyFadeTimer.current) { clearInterval(standbyFadeTimer.current); standbyFadeTimer.current = null; }
     const start = standbyRef.current.getVolume?.() ?? 0;
     const steps = 30;
-    const stepMs = Math.max(16, fadeDurationMs.current / steps);
+    const duration = durationOverrideMs !== undefined ? durationOverrideMs : fadeDurationMs.current;
+    const stepMs = Math.max(16, duration / steps);
     let step = 0;
     standbyFadeTimer.current = setInterval(() => {
       step++;
@@ -180,7 +181,8 @@ export default function PlayerPage() {
     standbyRef.current.playVideo();
     if (userActivated.current) {
       standbyRef.current.unMute(); // iOS: muted autoplay is permitted; unmute now that user has activated
-      fadeStandbyVolume(standbyTargetVol.current);
+      // Only fade up if no karaoke video is actively playing — avoids standby bleeding through songs
+      if (!currentVideoId.current) fadeStandbyVolume(standbyTargetVol.current);
     }
   }, [fadeStandbyVolume]);
 
@@ -214,7 +216,8 @@ export default function PlayerPage() {
   // ── Slate helpers ──────────────────────────────────────────────────────────
   const hideSlate = useCallback((callback: (() => void) | null) => {
     if (hideSlateTimer.current) { clearTimeout(hideSlateTimer.current); hideSlateTimer.current = null; }
-    fadeStandbyVolume(0);
+    // Use a fixed 480ms duration so standby is fully silent before the 560ms callback fires
+    fadeStandbyVolume(0, 480);
     const slate = document.getElementById('singer-slate');
     const idle  = document.getElementById('idle');
     if (idle) { idle.classList.remove('visible'); idle.style.display = 'none'; }

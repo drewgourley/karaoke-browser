@@ -79,11 +79,23 @@ export default function ControllerPage() {
   // ── Server state ─────────────────────────────────────────────────────────
   const [st, setSt] = useState<StateMessage | null>(null);
   const stRef = useRef<StateMessage | null>(null);
+
+  // ── Volume fader local state ───────────────────────────────────────────────
+  // Keep local copies so the slider responds to drag immediately without waiting
+  // for a WS round-trip; sync from server only when the user is not dragging.
+  const [faderStandby, setFaderStandby] = useState(75);
+  const [faderVideo,   setFaderVideo]   = useState(100);
+  const [faderMic,     setFaderMic]     = useState(80);
+  const faderDragging = useRef({ standby: false, video: false, mic: false });
+
   useEffect(() => {
     if (lastMessage?.type === 'state') {
       const s = lastMessage as StateMessage;
       setSt(s);
       stRef.current = s;
+      if (!faderDragging.current.standby) setFaderStandby(s.standbyVolume ?? 75);
+      if (!faderDragging.current.video)   setFaderVideo(s.videoVolume ?? 100);
+      if (!faderDragging.current.mic)     setFaderMic(s.micVolume ?? 80);
     }
   }, [lastMessage]);
 
@@ -480,7 +492,7 @@ export default function ControllerPage() {
   const np = st?.nowPlaying ?? null;
   const queue = st?.queue ?? [];
   const requests = st?.requests ?? [];
-  const micVol = st?.micVolume ?? 80;
+  const micVol = faderMic;
   const micMuted = !!st?.micMuted;
 
   if (displaced) {
@@ -869,21 +881,25 @@ export default function ControllerPage() {
                   <div className="fader-row">
                     <div className="fader-label-row">
                       <span>🎵 Standby Music</span>
-                      <span className="fader-val" id="standby-vol-value">{st.standbyVolume}</span>
+                      <span className="fader-val" id="standby-vol-value">{faderStandby}</span>
                     </div>
-                    <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={st.standbyVolume}
-                      style={{ '--fader-fill': '#00695c', '--pct': st.standbyVolume } as React.CSSProperties}
-                      onChange={e => { send({ type: 'set-standby-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                    <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={faderStandby}
+                      style={{ '--fader-fill': '#00695c', '--pct': faderStandby } as React.CSSProperties}
+                      onPointerDown={() => { faderDragging.current.standby = true; }}
+                      onPointerUp={() => { faderDragging.current.standby = false; }}
+                      onChange={e => { const v = Number(e.target.value); setFaderStandby(v); send({ type: 'set-standby-volume', volume: v }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
                     <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level when idle or between songs'}</div>
                   </div>
                   <div className="fader-row">
                     <div className="fader-label-row">
                       <span>🎤 Karaoke Video</span>
-                      <span className="fader-val" id="video-vol-value">{st.videoVolume}</span>
+                      <span className="fader-val" id="video-vol-value">{faderVideo}</span>
                     </div>
-                    <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={st.videoVolume}
-                      style={{ '--fader-fill': '#283593', '--pct': st.videoVolume } as React.CSSProperties}
-                      onChange={e => { send({ type: 'set-video-volume', volume: Number(e.target.value) }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                    <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={faderVideo}
+                      style={{ '--fader-fill': '#283593', '--pct': faderVideo } as React.CSSProperties}
+                      onPointerDown={() => { faderDragging.current.video = true; }}
+                      onPointerUp={() => { faderDragging.current.video = false; }}
+                      onChange={e => { const v = Number(e.target.value); setFaderVideo(v); send({ type: 'set-video-volume', volume: v }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
                     <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level during song playback'}</div>
                   </div>
                   <div className="fader-row">
@@ -900,7 +916,9 @@ export default function ControllerPage() {
                     </div>
                     <input type="range" id="mic-vol-slider" className="fader" min="0" max="100" value={micVol} disabled={!micReady}
                       style={{ '--fader-fill': '#880e4f', '--pct': micVol } as React.CSSProperties}
-                      onChange={e => { send({ type: 'set-mic-volume', volume: Number(e.target.value) }); applyMicGain(Number(e.target.value), micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                      onPointerDown={() => { faderDragging.current.mic = true; }}
+                      onPointerUp={() => { faderDragging.current.mic = false; }}
+                      onChange={e => { const v = Number(e.target.value); setFaderMic(v); send({ type: 'set-mic-volume', volume: v }); applyMicGain(v, micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
                     <div className="vu-meter" id="mic-vu-meter">
                       {Array.from({ length: VU_DOTS }, (_, i) => (
                         <span key={i} className={`vu-dot ${i < 15 ? 'vu-green' : i < 19 ? 'vu-yellow' : 'vu-red'}${(i <= vuLevel || (i === vuPeak && vuPeak > vuLevel)) ? ' lit' : ''}${(i === vuPeak && vuPeak > vuLevel) ? ' peak' : ''}`} />
