@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDeviceToken } from '../../hooks/useDeviceToken.ts';
 import { useWakeLock } from '../../hooks/useWakeLock.ts';
+import { useFullscreen } from '../../hooks/useFullscreen.ts';
 import type { ServerMessage, RequestMode } from '@karaoke-browser/shared';
 import './RequestPage.css';
 
@@ -27,8 +28,8 @@ export default function RequestPage() {
   const [name, setName]     = useState('');
   const [artist, setArtist] = useState('');
   const [title, setTitle]   = useState('');
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const { enable: wakeLockEnable, disable: wakeLockDisable } = useWakeLock();
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen({ onEnter: wakeLockEnable, onExit: wakeLockDisable });
 
   const wsRef       = useRef<WebSocket | null>(null);
   const retryTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,33 +144,7 @@ export default function RequestPage() {
     }
   };
 
-  const toggleFullscreen = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = document.documentElement as any, doc = document as any;
-    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
-      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
-      wakeLockEnable();
-    } else {
-      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document)?.catch(() => {});
-      wakeLockDisable();
-    }
-  };
 
-  useEffect(() => {
-    const onChange = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc = document as any;
-      const fs = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
-      setIsFullscreen(fs);
-      if (!fs) wakeLockDisable();
-    };
-    document.addEventListener('fullscreenchange', onChange);
-    document.addEventListener('webkitfullscreenchange', onChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      document.removeEventListener('webkitfullscreenchange', onChange);
-    };
-  }, [wakeLockDisable]);
 
   return (
     <div className="page">

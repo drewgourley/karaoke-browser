@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client.ts';
+import { useFullscreen } from '../../hooks/useFullscreen.ts';
 import type { StandbyThemeResponse } from '@karaoke-browser/shared';
 import './DisplayPage.css';
 
@@ -30,10 +31,9 @@ export default function DisplayPage() {
   const [error, setError]   = useState(false);
   const [requestUrl, setRequestUrl] = useState('');
 
-  const fullscreenRef = useRef<HTMLButtonElement>(null);
   const hideTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [btnVisible, setBtnVisible] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
 
   // Fullscreen button hide-on-idle
   useEffect(() => {
@@ -45,30 +45,6 @@ export default function DisplayPage() {
     document.addEventListener('mousemove', show);
     show();
     return () => { document.removeEventListener('mousemove', show); if (hideTimer.current) clearTimeout(hideTimer.current); };
-  }, []);
-
-  const toggleFullscreen = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = document.documentElement as any, doc = document as any;
-    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
-      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
-    } else {
-      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document)?.catch(() => {});
-    }
-  };
-
-  useEffect(() => {
-    const onChange = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc = document as any;
-      setIsFullscreen(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
-    };
-    document.addEventListener('fullscreenchange', onChange);
-    document.addEventListener('webkitfullscreenchange', onChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      document.removeEventListener('webkitfullscreenchange', onChange);
-    };
   }, []);
 
   // Load theme + QR
@@ -92,7 +68,6 @@ export default function DisplayPage() {
       <>
         <button
           id="fullscreen-btn"
-          ref={fullscreenRef}
           className={btnVisible ? 'visible' : ''}
           onClick={toggleFullscreen}
           title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
@@ -122,7 +97,6 @@ export default function DisplayPage() {
     <>
       <button
         id="fullscreen-btn"
-        ref={fullscreenRef}
         className={btnVisible ? 'visible' : ''}
         onClick={toggleFullscreen}
         title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}

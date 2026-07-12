@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../context/SessionContext.tsx';
 import { useWakeLock } from '../../hooks/useWakeLock.ts';
+import { useFullscreen } from '../../hooks/useFullscreen.ts';
 import type { StateMessage } from '@karaoke-browser/shared';
 import './PlayerPage.css';
 
@@ -117,8 +118,8 @@ export default function PlayerPage() {
   const [gateFading, setGateFading]   = useState(false);
   const [controllerDot, setControllerDot] = useState(false);
   const [btnVisible, setBtnVisible]   = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const { enable: wakeLockEnable, disable: wakeLockDisable } = useWakeLock();
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen({ onEnter: wakeLockEnable, onExit: wakeLockDisable });
 
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -138,22 +139,6 @@ export default function PlayerPage() {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
   }, []);
-
-  useEffect(() => {
-    const onChange = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc = document as any;
-      const fs = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
-      setIsFullscreen(fs);
-      if (!fs) wakeLockDisable();
-    };
-    document.addEventListener('fullscreenchange', onChange);
-    document.addEventListener('webkitfullscreenchange', onChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      document.removeEventListener('webkitfullscreenchange', onChange);
-    };
-  }, [wakeLockDisable]);
 
   // ── Standby helpers ────────────────────────────────────────────────────
   const fadeStandbyVolume = useCallback((target: number, durationOverrideMs?: number) => {
@@ -576,18 +561,6 @@ export default function PlayerPage() {
     }
     setGateFading(true);
     setTimeout(() => setGateVisible(false), 450);
-  };
-
-  const toggleFullscreen = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = document.documentElement as any, doc = document as any;
-    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
-      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
-      wakeLockEnable();
-    } else {
-      (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc)?.catch(() => {});
-      wakeLockDisable();
-    }
   };
 
   if (displaced) {

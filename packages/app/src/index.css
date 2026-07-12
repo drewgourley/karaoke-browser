@@ -1,5 +1,357 @@
-/* Make the React root wrapper transparent to layout so page CSS that targets
-   `body > .page` / full-screen layouts works exactly as in the legacy pages. */
-#root {
-  display: contents;
+/* ═══════════════════════════════════════════════════════════════════════════
+   KARAOKE BROWSER — Design System
+   Global design tokens, base reset, and shared component styles.
+   Imported once in main.tsx; all page CSS builds on these foundations.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+
+:root {
+  /* Backgrounds */
+  --bg:       #0f0f1a;
+  --surface0: #141422;
+  --surface:  #1a1a2e;
+  --surface2: #2a2a45;
+
+  /* Accents */
+  --accent:   #4cc9f0;
+  --accent2:  #7dd8f5;
+
+  /* Semantic colours */
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --danger:   #ef476f;
+  --success:  #4ecdc4;
+  --warning:  #ffd166;
+
+  /* Borders */
+  --border:   #2a2a45;
+
+  /* Standby gradient — 8 colour stops shared by Player / Display / Controller preview */
+  --sc1: #4cc9f0;
+  --sc2: #4361ee;
+  --sc3: #7c3aed;
+  --sc4: #f72585;
+  --sc5: #ff6b35;
+  --sc6: #ffd166;
+  --sc7: #06d6a0;
+  --sc8: #3a0ca3;
+
+  /* Configurable standby text (overridden at runtime by the Controller) */
+  --scq-heading-color:  #ffffff;
+  --scq-heading-stroke: 0px transparent;
+  --scq-sub-color:      #ffffff;
+  --scq-sub-stroke:     0px transparent;
+
+  /* Shape */
+  --radius: 12px;
+
+  /* Typography */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+[hidden], .hidden { display: none !important; }
+
+/* ── React root wrapper ─────────────────────────────────────────────────── */
+/* Keeps page CSS that targets `body > .page` / full-screen layouts working. */
+
+#root { display: contents; }
+
+/* ── Base body ──────────────────────────────────────────────────────────── */
+/* Pages extend this with their own layout rules (display, padding, etc.).  */
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+}
+
+/* ── Status pill & dot ──────────────────────────────────────────────────── */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px 4px 8px;
+  border-radius: 20px;
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--muted);
+  transition: background 0.3s, color 0.3s;
+}
+.status:has(.dot.on)  { background: rgba(78, 205, 196, 0.12); color: var(--success); }
+.status:has(.dot.off) { background: rgba(239, 71, 111, 0.12); color: var(--danger); }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  display: inline-block;
+}
+.dot.on  { background: var(--success); box-shadow: 0 0 5px var(--success); }
+.dot.off { background: var(--danger); }
+
+/* ── Pill slide-switch (mode-toggle) ────────────────────────────────────── */
+
+.mode-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  flex-shrink: 0;
+}
+.mode-toggle:hover         { filter: none; }
+.mode-toggle:hover .mode-option { color: var(--text); }
+.mode-toggle:active        { filter: none; opacity: 0.85; }
+
+.mode-track {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 18px;
+  background: rgba(76, 201, 240, 0.15);
+  border: 1px solid rgba(76, 201, 240, 0.35);
+  transition: transform 0.22s ease, background 0.22s, border-color 0.22s;
+  pointer-events: none;
+}
+.mode-toggle[data-mode="crowd"] .mode-track {
+  transform: translateX(calc(100% + 2px));
+}
+
+.mode-option {
+  position: relative;
+  z-index: 1;
+  padding: 0.22rem 0.6rem;
+  min-width: 3.6rem;
+  text-align: center;
+  color: var(--muted);
+  transition: color 0.2s ease;
+  pointer-events: none;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
+.mode-toggle[data-mode="kiosk"] .mode-option:nth-child(2),
+.mode-toggle[data-mode="crowd"]  .mode-option:last-child  { color: var(--text); }
+
+/* ── Modal overlay & dialog ─────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: min(400px, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.modal-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-heading { font-size: 1.1rem; font-weight: 700; }
+.modal-hint    { font-size: 0.78rem; color: var(--muted); margin: 0; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.btn-modal-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-modal-close:hover { background: var(--border); color: var(--text); }
+
+.btn-modal-secondary {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-modal-secondary:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+
+/* ── Fixed fullscreen button ────────────────────────────────────────────── */
+/* Used on Player and Display pages — auto-hides, reappears on mouse move.  */
+
+#fullscreen-btn {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 9;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 15, 26, 0.75);
+  color: var(--accent);
+  border: 1px solid rgba(76, 201, 240, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  user-select: none;
+}
+#fullscreen-btn.visible { opacity: 1; pointer-events: auto; }
+#fullscreen-btn:hover   { color: var(--accent2); border-color: rgba(76, 201, 240, 0.6); }
+
+:fullscreen #fullscreen-btn,
+:-webkit-full-screen #fullscreen-btn { z-index: 2147483647; }
+
+/* ── Utility text states ────────────────────────────────────────────────── */
+
+.error {
+  font-size: 0.82rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* ── Shared narrow-column page scaffold ─────────────────────────────────── */
+/* Used by Index and Request pages.                                          */
+
+.page {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Card ───────────────────────────────────────────────────────────────── */
+/* Base appearance — pages extend with their own padding / flex layout.      */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ── Typography utilities ───────────────────────────────────────────────── */
+
+.subtitle {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.hint {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Primary action button ──────────────────────────────────────────────── */
+/* Base styles — pages extend with sizing (padding, font-size, width, etc.). */
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent2); }
+.btn-primary:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Keyframe animations ────────────────────────────────────────────────── */
+
+/* Animated gradient used by Player, Display, and Controller standby preview */
+@keyframes standby-gradient {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+/* Mic watermark diagonal drift used by Player and Display */
+@keyframes mic-drift {
+  0%   { background-position: 0 0, 50px 50px; }
+  100% { background-position: 100px 100px, 150px 150px; }
+}
+
+/* QR card pulse glow used by Player (crowd slate) and Display */
+@keyframes qr-glow {
+  0%, 100% { box-shadow: 0 0 40px rgba(255, 255, 255, 0.20); }
+  50%       { box-shadow: 0 0 80px rgba(255, 255, 255, 0.50); }
+}
+
+/* Version badge refresh spinner */
+@keyframes badge-spin { to { transform: rotate(360deg); } }
+
+/* QR card shimmer used by Player (crowd slate) and Display while QR is loading */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Start gate pulse used by Player and Display to prompt user tap for autoplay */
+@keyframes gate-pulse {
+  0%, 100% { transform: scale(1);    opacity: 0.65; }
+  50%       { transform: scale(1.07); opacity: 1;    }
 }

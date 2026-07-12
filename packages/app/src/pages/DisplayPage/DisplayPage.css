@@ -1,25 +1,6 @@
-:root {
-  --sc1: #4cc9f0;
-  --sc2: #4361ee;
-  --sc3: #7c3aed;
-  --sc4: #f72585;
-  --sc5: #ff6b35;
-  --sc6: #ffd166;
-  --sc7: #06d6a0;
-  --sc8: #3a0ca3;
-  --scq-heading-color:  #ffffff;
-  --scq-heading-stroke: 0px transparent;
-  --scq-sub-color:      #ffffff;
-  --scq-sub-stroke:     0px transparent;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-[hidden] { display: none !important; }
-
 html, body { width: 100%; height: 100%; overflow: hidden; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: linear-gradient(
     135deg,
     var(--sc1) 0%,
@@ -32,7 +13,7 @@ body {
     var(--sc8) 100%
   );
   background-size: 400% 400%;
-  animation: bg-gradient 10s ease infinite;
+  animation: standby-gradient 10s ease infinite;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -40,7 +21,6 @@ body {
   position: relative;
 }
 
-/* Microphone watermark — diamond pattern drifting diagonally */
 body::after {
   content: '';
   position: fixed;
@@ -54,19 +34,6 @@ body::after {
   animation: mic-drift 15s linear infinite;
   pointer-events: none;
 }
-
-@keyframes bg-gradient {
-  0%   { background-position: 0%   50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0%   50%; }
-}
-
-@keyframes mic-drift {
-  0%   { background-position: 0 0, 50px 50px; }
-  100% { background-position: 100px 100px, 150px 150px; }
-}
-
-/* ── Display page ─────────────────────────────────────────────────────────── */
 
 .display-page {
   display: flex;
@@ -104,18 +71,11 @@ body::after {
   paint-order: stroke fill;
 }
 
-/* ── QR card ──────────────────────────────────────────────────────────────── */
-
 .qr-card {
   background: #fff;
   border-radius: 20px;
   padding: 14px;
   animation: qr-glow 3s ease-in-out infinite;
-}
-
-@keyframes qr-glow {
-  0%, 100% { box-shadow: 0 0 40px rgba(255,255,255,0.20); }
-  50%       { box-shadow: 0 0 80px rgba(255,255,255,0.50); }
 }
 
 .qr-img {
@@ -125,19 +85,11 @@ body::after {
   image-rendering: pixelated;
 }
 
-/* Placeholder shimmer while QR is loading */
 .qr-img:not([src]), .qr-img[src=""] {
   background: linear-gradient(90deg, #e0e0e0 25%, #f5f5f5 50%, #e0e0e0 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
-
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ── URL pill ─────────────────────────────────────────────────────────────── */
 
 .url-pill {
   display: none;
@@ -147,36 +99,4 @@ body::after {
   word-break: break-all;
   max-width: min(560px, 65vw);
   text-align: center;
-}
-
-/* ── Fullscreen button (matches player page exactly) ─────────────────────── */
-#fullscreen-btn {
-  position: fixed;
-  bottom: 1.25rem;
-  right: 1.25rem;
-  z-index: 9;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 15, 26, 0.75);
-  color: #4cc9f0;
-  border: 1px solid rgba(76, 201, 240, 0.3);
-  border-radius: 8px;
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.4s ease;
-  user-select: none;
-}
-#fullscreen-btn.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-#fullscreen-btn:hover { color: #7dd8f5; border-color: rgba(76, 201, 240, 0.6); }
-
-:fullscreen #fullscreen-btn,
-:-webkit-full-screen #fullscreen-btn {
-  z-index: 2147483647;
 }

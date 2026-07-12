@@ -5,7 +5,13 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../context/SessionContext.tsx';
 import { useWebSocket } from '../../hooks/useWebSocket.ts';
 import { useWakeLock } from '../../hooks/useWakeLock.ts';
+import { useFullscreen } from '../../hooks/useFullscreen.ts';
 import { api } from '../../api/client.ts';
+import { Modal } from '../../components/Modal.tsx';
+import { FaderRow } from '../../components/FaderRow.tsx';
+import { QueueListItem } from '../../components/QueueListItem.tsx';
+import { CopyButton } from '../../components/CopyButton.tsx';
+import { TogglePill } from '../../components/TogglePill.tsx';
 import type { StateMessage, ClientMessage, QueueItem, PublicSongRequest, SearchResult, PlaylistSearchResult } from '@karaoke-browser/shared';
 import './ControllerPage.css';
 
@@ -122,12 +128,19 @@ export default function ControllerPage() {
   // ── Devices modal ─────────────────────────────────────────────────────────
   const [showDevices, setShowDevices] = useState(false);
 
+  // ── Mic input modal ───────────────────────────────────────────────────────
+  const [showMicModal, setShowMicModal]   = useState(false);
+  const [micInputs, setMicInputs]         = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState('');
+
   // ── Link modals ───────────────────────────────────────────────────────────
   const [reqLinkModal, setReqLinkModal]       = useState(false);
   const [kioskLinkModal, setKioskLinkModal]   = useState(false);
   const [reqLinkQr, setReqLinkQr]             = useState('');
   const [kioskLinkQr, setKioskLinkQr]         = useState('');
   const [showSdModal, setShowSdModal]         = useState(false);
+  const [showClearQueueModal, setShowClearQueueModal] = useState(false);
+  const [showClearStandbyModal, setShowClearStandbyModal] = useState(false);
   const [, forceRerender] = useReducer(x => x + 1, 0);
 
   // ── Standby settings modal ────────────────────────────────────────────────
@@ -153,34 +166,8 @@ export default function ControllerPage() {
   const mxDragged   = useRef(false);
 
   // ── Fullscreen ────────────────────────────────────────────────────────────
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const { enable: wakeLockEnable, disable: wakeLockDisable } = useWakeLock();
-  useEffect(() => {
-    const onChange = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc = document as any;
-      const fs = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
-      setIsFullscreen(fs);
-      if (!fs) wakeLockDisable();
-    };
-    document.addEventListener('fullscreenchange', onChange);
-    document.addEventListener('webkitfullscreenchange', onChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      document.removeEventListener('webkitfullscreenchange', onChange);
-    };
-  }, [wakeLockDisable]);
-  const toggleFullscreen = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = document.documentElement as any, doc = document as any;
-    if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
-      (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el)?.catch(() => {});
-      wakeLockEnable();
-    } else {
-      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document)?.catch(() => {});
-      wakeLockDisable();
-    }
-  };
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen({ onEnter: wakeLockEnable, onExit: wakeLockDisable });
 
   const [mxTab, setMxTab]           = useState<'search' | 'url'>('search');
   const [mxUrlInput, setMxUrlInput] = useState('');
@@ -240,11 +227,11 @@ export default function ControllerPage() {
     if (micGain.current) micGain.current.gain.value = muted ? 0 : vol / 100;
   }, []);
 
-  const initMic = useCallback(async () => {
+  const initMic = useCallback(async (deviceId?: string) => {
     if (micStream.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
       });
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(stream);
@@ -274,6 +261,34 @@ export default function ControllerPage() {
       setMicReady(true);
     } catch { setMicReady(false); }
   }, [setVuLevelFn]);
+
+  const openMicModal = useCallback(async () => {
+    try {
+      if (!micStream.current) {
+        const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tmp.getTracks().forEach(t => t.stop());
+      }
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setMicInputs(all.filter(d => d.kind === 'audioinput'));
+      setSelectedMicId(micStream.current?.getAudioTracks()[0]?.getSettings().deviceId ?? '');
+    } catch {
+      setMicInputs([]);
+      setSelectedMicId('');
+    }
+    setShowMicModal(true);
+  }, []);
+
+  const switchMic = useCallback(async (deviceId: string) => {
+    if (micLevelTimer.current) { clearInterval(micLevelTimer.current); micLevelTimer.current = null; }
+    micStream.current?.getTracks().forEach(t => t.stop());
+    micStream.current = null;
+    if (micCtx.current) { await micCtx.current.close(); micCtx.current = null; }
+    micGain.current = null;
+    micAnalyser.current = null;
+    setMicReady(null);
+    setShowMicModal(false);
+    await initMic(deviceId);
+  }, [initMic]);
 
   useEffect(() => {
     if (connected) void initMic();
@@ -572,18 +587,24 @@ export default function ControllerPage() {
               <div className="card-label" style={{ marginBottom: 0 }}>Now Playing</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {np && !np.embedError && queue.length > 0 && (
-                  <button className="ghost" id="requeue-btn" title="Requeue: put current track back at the top of the queue and play next" style={{ fontSize: '0.75rem' }} disabled={!st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: 'requeue' })}>↩ Requeue</button>
+                  <button className="card-btn-sm" id="requeue-btn" title="Requeue: put current track back at the top of the queue and play next" disabled={!st?.playerConnected || st?.playerMode === 'standby'} onClick={() => send({ type: 'requeue' })}>↩ Requeue</button>
                 )}
-                <div className="player-mode-toggle" id="player-mode-toggle" data-mode={st?.playerMode ?? 'karaoke'} title={'Standby: show standby screen\nKaraoke: normal karaoke playback'}>
-                  <span className="pmt-track"></span>
-                  <button className="pmt-opt" id="pmt-standby" onClick={() => send({ type: 'set-player-mode', mode: 'standby' })}>🌙 Standby</button>
-                  <button className="pmt-opt" id="pmt-karaoke" onClick={() => send({ type: 'set-player-mode', mode: 'karaoke' })}>🎤 Karaoke</button>
-                </div>
+                <TogglePill
+                  variant="player-mode"
+                  id="player-mode-toggle"
+                  value={st?.playerMode ?? 'karaoke'}
+                  title={'Standby: show standby screen\nKaraoke: normal karaoke playback'}
+                  onChange={v => send({ type: 'set-player-mode', mode: v as 'standby' | 'karaoke' })}
+                  options={[
+                    { value: 'standby', label: '\uD83C\uDF19 Standby', id: 'pmt-standby' },
+                    { value: 'karaoke', label: '\uD83C\uDFA4 Karaoke', id: 'pmt-karaoke' },
+                  ]}
+                />
               </div>
             </div>
             <div id="now-playing">
               {!np ? (
-                <span className="np-idle">Nothing playing</span>
+                <span className="empty">Nothing playing</span>
               ) : np.embedError ? (
                 <div className="embed-warn">
                   <div className="embed-warn-title">⚠️ {np.title}</div>
@@ -615,33 +636,29 @@ export default function ControllerPage() {
           <div className="card">
             <div className="queue-header">
               <div className="card-label" style={{ marginBottom: 0 }}>Up Next <span className="badge" id="q-count">{queue.length}</span></div>
-              <button className="ghost" id="clear-btn" title="Clear entire queue" style={{ fontSize: '0.75rem' }} onClick={() => { if (queue.length && confirm('Clear queue?')) for (let i = queue.length - 1; i >= 0; i--) send({ type: 'remove', index: i }); }}>✕ Clear</button>
+              <button className="card-btn-sm" id="clear-btn" title="Clear entire queue" disabled={queue.length === 0} onClick={() => setShowClearQueueModal(true)}>✕ Clear</button>
             </div>
             <ul className="queue" id="queue-list">
               {queue.length === 0 ? (
                 <li className="empty">Queue is empty</li>
               ) : queue.map((item: QueueItem, i: number) => (
-                <li
+                <QueueListItem
                   key={item.id}
-                  className="qi"
+                  index={i}
+                  videoId={item.videoId}
+                  title={item.title}
+                  singer={item.singer}
                   draggable
                   onDragStart={() => { dragFrom.current = i; }}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); if (dragFrom.current !== null && dragFrom.current !== i) send({ type: 'reorder', from: dragFrom.current, to: i }); dragFrom.current = null; }}
-                >
-                  <span className="qi-num">{i + 1}</span>
-                  <img className="qi-thumb" src={thumb(item.videoId)} alt="" />
-                  <div className="qi-info">
-                    <span className="qi-title" title={item.title}>{item.title}</span>
-                    {item.singer && <span className="qi-singer">🎤 {item.singer}</span>}
-                  </div>
-                  <div className="qi-actions">
+                  actions={<>
                     {i > 0 && <button className="ghost" onClick={() => send({ type: 'reorder', from: i, to: i - 1 })}>↑</button>}
                     {i < queue.length - 1 && <button className="ghost" onClick={() => send({ type: 'reorder', from: i, to: i + 1 })}>↓</button>}
                     <button className="ghost" onClick={() => send({ type: 'play-index', index: i })}>▶</button>
                     <button className="ghost" onClick={() => send({ type: 'remove', index: i })}>✕</button>
-                  </div>
-                </li>
+                  </>}
+                />
               ))}
             </ul>
           </div>
@@ -654,13 +671,18 @@ export default function ControllerPage() {
               <div className="card-label" style={{ marginBottom: 0 }}>Find Song</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {(searchQ || addUrl || addTitle || searchResults.length > 0) && (
-                  <button className="ghost" id="find-clear-btn" style={{ fontSize: '0.75rem' }} onClick={() => { setSearchQ(''); setAddUrl(''); setAddTitle(''); setSearchResults([]); setSearchError(''); }}>✕ Clear</button>
+                  <button className="card-btn-sm" id="find-clear-btn" onClick={() => { setSearchQ(''); setAddUrl(''); setAddTitle(''); setSearchResults([]); setSearchError(''); }}>✕ Clear</button>
                 )}
-                <div className="find-tab-toggle" id="find-tab-toggle" data-tab={addTab}>
-                  <span className="find-tab-track"></span>
-                  <button className="find-tab-btn" id="tab-search" onClick={() => setAddTab('search')}>🔍 Search</button>
-                  <button className="find-tab-btn" id="tab-url" onClick={() => setAddTab('url')}>🔗 Paste URL</button>
-                </div>
+                <TogglePill
+                  variant="find-tab"
+                  id="find-tab-toggle"
+                  value={addTab}
+                  onChange={setAddTab}
+                  options={[
+                    { value: 'search', label: '🔍 Search', id: 'tab-search' },
+                    { value: 'url', label: '🔗 Paste URL', id: 'tab-url' },
+                  ]}
+                />
               </div>
             </div>
 
@@ -716,11 +738,17 @@ export default function ControllerPage() {
                 {st?.requestMode === 'crowd' && (st?.blockedCount ?? 0) > 0 && (
                   <button id="req-clear-blocked-btn" className="btn-clear-blocked" title="Unblock all waiting crowd devices" onClick={() => send({ type: 'clear-blocked-devices' })}>↺ Unblock all</button>
                 )}
-                <button id="req-mode-btn" className="mode-toggle" data-mode={st?.requestMode ?? 'kiosk'} title={'Kiosk: unlimited requests per device\nCrowd: one request per device until processed'} onClick={() => send({ type: 'set-request-mode', mode: st?.requestMode === 'crowd' ? 'kiosk' : 'crowd' })}>
-                  <span className="mode-track"></span>
-                  <span className="mode-option">🏠 Kiosk</span>
-                  <span className="mode-option">📱 Crowd</span>
-                </button>
+                <TogglePill
+                  variant="mode"
+                  id="req-mode-btn"
+                  value={st?.requestMode ?? 'kiosk'}
+                  title={'Kiosk: unlimited requests per device\nCrowd: one request per device until processed'}
+                  onChange={v => send({ type: 'set-request-mode', mode: v as 'kiosk' | 'crowd' })}
+                  options={[
+                    { value: 'kiosk', label: '🏠 Kiosk' },
+                    { value: 'crowd', label: '📱 Crowd' },
+                  ]}
+                />
               </div>
             </div>
             <ul className="queue" id="request-list">
@@ -780,11 +808,11 @@ export default function ControllerPage() {
                 <div className="card">
                   <div className="queue-header" style={{ marginBottom: '0.9rem' }}>
                     <div className="card-label" style={{ marginBottom: 0 }}>Standby Music</div>
-                    <button className="ghost" id="standby-settings-btn" style={{ fontSize: '0.75rem' }} onClick={openSsModal}>🎨 Customize Standby Screen</button>
+                    <button className="card-btn-sm" id="standby-settings-btn" onClick={openSsModal}>🎨 Customize</button>
                   </div>
                   <div id="standby-now-playing">
                     {!st.standbyPlaylistId ? (
-                      <span className="np-idle">No playlist set</span>
+                      <span className="empty">No playlist set</span>
                     ) : (
                       <div className="np-wrap">
                         {st.standbyTrack?.videoId
@@ -813,15 +841,18 @@ export default function ControllerPage() {
                       <div className="card-label" style={{ marginBottom: 0 }}>
                         Playlist Tracks <span className="badge" id="standby-track-count">{mxTracks.length}</span>
                       </div>
-                      <button className="ghost" id="clear-standby-btn" title="Clear standby playlist" style={{ fontSize: '0.75rem' }} onClick={() => send({ type: 'clear-standby' })}>Clear</button>
+                      <button className="card-btn-sm" id="clear-standby-btn" title="Clear standby playlist" onClick={() => setShowClearStandbyModal(true)}>✕ Clear</button>
                     </div>
                     <ul className="queue" id="standby-track-list">
                       {mxTracks.map((t, i) => (
-                        <li key={t.videoId} className={`qi${st.standbyTrack?.videoId === t.videoId ? ' qi-current' : ''}`}>
-                          <span className="qi-num">{i + 1}</span>
-                          <img className="qi-thumb" src={t.thumbnail || thumb(t.videoId)} alt="" loading="lazy" />
-                          <div className="qi-info"><span className="qi-title">{t.title}</span></div>
-                        </li>
+                        <QueueListItem
+                          key={t.videoId}
+                          index={i}
+                          videoId={t.videoId}
+                          title={t.title}
+                          thumbnail={t.thumbnail}
+                          isCurrent={st.standbyTrack?.videoId === t.videoId}
+                        />
                       ))}
                     </ul>
                   </div>
@@ -835,13 +866,18 @@ export default function ControllerPage() {
                     <div className="card-label" style={{ marginBottom: 0 }}>Standby Playlist</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       {(mxSearchQ || mxUrlInput || mxSearchResults.length > 0) && (
-                        <button className="ghost" id="mx-find-clear-btn" style={{ fontSize: '0.75rem' }} onClick={() => { setMxSearchQ(''); setMxUrlInput(''); setMxSearchResults([]); setMxSearchStatus(''); }}>✕ Clear</button>
+                        <button className="card-btn-sm" id="mx-find-clear-btn" onClick={() => { setMxSearchQ(''); setMxUrlInput(''); setMxSearchResults([]); setMxSearchStatus(''); }}>✕ Clear</button>
                       )}
-                      <div className="find-tab-toggle" id="mx-find-tab-toggle" data-tab={mxTab}>
-                        <span className="find-tab-track"></span>
-                        <button className="find-tab-btn" id="mx-tab-search" onClick={() => setMxTab('search')}>🔍 Search</button>
-                        <button className="find-tab-btn" id="mx-tab-url" onClick={() => setMxTab('url')}>🔗 Paste URL</button>
-                      </div>
+                      <TogglePill
+                        variant="find-tab"
+                        id="mx-find-tab-toggle"
+                        value={mxTab}
+                        onChange={setMxTab}
+                        options={[
+                          { value: 'search', label: '🔍 Search', id: 'mx-tab-search' },
+                          { value: 'url', label: '🔗 Paste URL', id: 'mx-tab-url' },
+                        ]}
+                      />
                     </div>
                   </div>
                   <div id="mx-panel-search" style={mxTab === 'search' ? undefined : { display: 'none' }}>
@@ -877,33 +913,34 @@ export default function ControllerPage() {
               {/* Col 3: Volume faders */}
               <div className="col">
                 <div className="card">
-                  <div className="card-label">Volume</div>
-                  <div className="fader-row">
-                    <div className="fader-label-row">
-                      <span>🎵 Standby Music</span>
-                      <span className="fader-val" id="standby-vol-value">{faderStandby}</span>
-                    </div>
-                    <input type="range" id="standby-vol-slider" className="fader" min="0" max="100" value={faderStandby}
-                      style={{ '--fader-fill': '#00695c', '--pct': faderStandby } as React.CSSProperties}
-                      onPointerDown={() => { faderDragging.current.standby = true; }}
-                      onPointerUp={() => { faderDragging.current.standby = false; }}
-                      onChange={e => { const v = Number(e.target.value); setFaderStandby(v); send({ type: 'set-standby-volume', volume: v }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                    <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level when idle or between songs'}</div>
+                  <div className="card-label-row">
+                    <div className="card-label">Volume</div>
+                    <button className="card-btn-sm" onClick={() => void openMicModal()}>🎙️ Devices</button>
                   </div>
-                  <div className="fader-row">
-                    <div className="fader-label-row">
-                      <span>🎤 Karaoke Video</span>
-                      <span className="fader-val" id="video-vol-value">{faderVideo}</span>
-                    </div>
-                    <input type="range" id="video-vol-slider" className="fader" min="0" max="100" value={faderVideo}
-                      style={{ '--fader-fill': '#283593', '--pct': faderVideo } as React.CSSProperties}
-                      onPointerDown={() => { faderDragging.current.video = true; }}
-                      onPointerUp={() => { faderDragging.current.video = false; }}
-                      onChange={e => { const v = Number(e.target.value); setFaderVideo(v); send({ type: 'set-video-volume', volume: v }); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
-                    <div className="fader-hint">{st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level during song playback'}</div>
-                  </div>
-                  <div className="fader-row">
-                    <div className="fader-label-row">
+                  <FaderRow
+                    label="🎵 Standby Music"
+                    value={faderStandby}
+                    color="#00695c"
+                    sliderId="standby-vol-slider"
+                    valueId="standby-vol-value"
+                    onPointerDown={() => { faderDragging.current.standby = true; }}
+                    onPointerUp={() => { faderDragging.current.standby = false; }}
+                    onChange={v => { setFaderStandby(v); send({ type: 'set-standby-volume', volume: v }); }}
+                    hint={st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level when idle or between songs'}
+                  />
+                  <FaderRow
+                    label="🎤 Karaoke Video"
+                    value={faderVideo}
+                    color="#283593"
+                    sliderId="video-vol-slider"
+                    valueId="video-vol-value"
+                    onPointerDown={() => { faderDragging.current.video = true; }}
+                    onPointerUp={() => { faderDragging.current.video = false; }}
+                    onChange={v => { setFaderVideo(v); send({ type: 'set-video-volume', volume: v }); }}
+                    hint={st.playerIsIOS ? <span className="ios-vol-note">📱 iOS player — use device volume buttons</span> : 'Level during song playback'}
+                  />
+                  <FaderRow
+                    label={
                       <span className="fader-mic-label">
                         <label className="toggle-switch" title="Mute microphone">
                           <input type="checkbox" id="mic-mute-btn" checked={!micMuted} disabled={!micReady} onChange={() => send({ type: 'mic-mute', muted: !micMuted })} />
@@ -912,22 +949,23 @@ export default function ControllerPage() {
                         🎙️ Microphone
                         <span className={`status-dot-sm${micReady && !micMuted ? ' on' : ''}`} id="mic-status-dot"></span>
                       </span>
-                      <span className="fader-val" id="mic-vol-value">{micVol}</span>
-                    </div>
-                    <input type="range" id="mic-vol-slider" className="fader" min="0" max="100" value={micVol} disabled={!micReady}
-                      style={{ '--fader-fill': '#880e4f', '--pct': micVol } as React.CSSProperties}
-                      onPointerDown={() => { faderDragging.current.mic = true; }}
-                      onPointerUp={() => { faderDragging.current.mic = false; }}
-                      onChange={e => { const v = Number(e.target.value); setFaderMic(v); send({ type: 'set-mic-volume', volume: v }); applyMicGain(v, micMuted); e.currentTarget.style.setProperty('--pct', e.target.value); }} />
+                    }
+                    value={micVol}
+                    color="#880e4f"
+                    sliderId="mic-vol-slider"
+                    valueId="mic-vol-value"
+                    disabled={!micReady}
+                    onPointerDown={() => { faderDragging.current.mic = true; }}
+                    onPointerUp={() => { faderDragging.current.mic = false; }}
+                    onChange={v => { setFaderMic(v); send({ type: 'set-mic-volume', volume: v }); applyMicGain(v, micMuted); }}
+                    hint={micReady === null ? 'Awaiting player…' : micReady === false ? 'Permission denied or unavailable' : micMuted ? 'Muted' : 'Active'}
+                  >
                     <div className="vu-meter" id="mic-vu-meter">
                       {Array.from({ length: VU_DOTS }, (_, i) => (
                         <span key={i} className={`vu-dot ${i < 15 ? 'vu-green' : i < 19 ? 'vu-yellow' : 'vu-red'}${(i <= vuLevel || (i === vuPeak && vuPeak > vuLevel)) ? ' lit' : ''}${(i === vuPeak && vuPeak > vuLevel) ? ' peak' : ''}`} />
                       ))}
                     </div>
-                    <div className="fader-hint" id="mic-hint">
-                      {micReady === null ? 'Awaiting player…' : micReady === false ? 'Permission denied or unavailable' : micMuted ? 'Muted' : 'Active'}
-                    </div>
-                  </div>
+                  </FaderRow>
                 </div>
               </div>
             </div>
@@ -935,136 +973,146 @@ export default function ControllerPage() {
         )}
       </div>
 
-      {/* ── Singer modal ── */}
-      {singerModal && (
-        <div id="singer-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) closeSinger(); }}>
-          <div className="modal">
-            <div className="modal-song" id="modal-song">{singerModal.title}</div>
-            <div className="modal-heading">🎤 Who's singing?</div>
-            <input type="text" id="singer-input" value={singerName} autoFocus autoComplete="off"
-              onChange={e => setSingerName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') confirmSinger(); if (e.key === 'Escape') closeSinger(); }}
-              placeholder="Singer's name (optional)" />
-            <div className="modal-actions">
-              <button className="secondary" id="modal-skip" onClick={closeSinger}>Cancel</button>
-              <button id="modal-confirm" onClick={confirmSinger}>Add to queue</button>
-            </div>
-          </div>
+      {/* ── Clear queue confirmation modal ── */}
+      <Modal isOpen={showClearQueueModal} title="Clear queue?" onClose={() => setShowClearQueueModal(false)}>
+        <p className="modal-hint">This will remove all {queue.length} song{queue.length !== 1 ? 's' : ''} from the queue.</p>
+        <div className="modal-actions">
+          <button className="btn-modal-secondary" onClick={() => setShowClearQueueModal(false)}>Cancel</button>
+          <button className="secondary" onClick={() => { for (let i = queue.length - 1; i >= 0; i--) send({ type: 'remove', index: i }); setShowClearQueueModal(false); }}>Clear all</button>
         </div>
-      )}
+      </Modal>
+
+      {/* ── Clear standby playlist confirmation modal ── */}
+      <Modal isOpen={showClearStandbyModal} title="Clear standby playlist?" onClose={() => setShowClearStandbyModal(false)}>
+        <p className="modal-hint">This will remove the current playlist and stop standby music.</p>
+        <div className="modal-actions">
+          <button className="btn-modal-secondary" onClick={() => setShowClearStandbyModal(false)}>Cancel</button>
+          <button className="secondary" onClick={() => { send({ type: 'clear-standby' }); setShowClearStandbyModal(false); }}>Clear playlist</button>
+        </div>
+      </Modal>
+
+      {/* ── Singer modal ── */}
+      <Modal id="singer-modal" isOpen={!!singerModal} title="🎤 Who's singing?" onClose={closeSinger}>
+        <div className="modal-song" id="modal-song">{singerModal?.title}</div>
+        <input type="text" id="singer-input" value={singerName} autoFocus autoComplete="off"
+          onChange={e => setSingerName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') confirmSinger(); if (e.key === 'Escape') closeSinger(); }}
+          placeholder="Singer's name (optional)" />
+        <div className="modal-actions">
+          <button className="btn-modal-secondary" id="modal-skip" onClick={closeSinger}>Cancel</button>
+          <button id="modal-confirm" onClick={confirmSinger}>Add to queue</button>
+        </div>
+      </Modal>
 
       {/* ── Stream Deck setup modal ── */}
-      {showSdModal && sessionId && (
-        <div id="sd-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSdModal(false); }}>
-          <div className="modal">
-            <div className="modal-heading">📟 Stream Deck Setup</div>
-            <p className="req-link-label">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
-            <p className="req-link-label" style={{ marginTop: '0.5rem' }}>Server URL</p>
-            <div className="req-link-controls">
-              <input id="sd-server-url" type="text" readOnly className="req-link-url" autoComplete="off" value={location.origin} />
-              <button className="btn-copy-link" id="sd-copy-url" onClick={e => { navigator.clipboard?.writeText(location.origin); const b = e.currentTarget, t = b.textContent; b.textContent = 'Copied!'; setTimeout(() => { b.textContent = t; }, 1200); }}>Copy</button>
-            </div>
-            <p className="req-link-label">Session ID</p>
-            <div className="req-link-controls">
-              <input id="sd-session-id" type="text" readOnly className="req-link-url" autoComplete="off" value={sessionId} />
-              <button className="btn-copy-link" id="sd-copy-sid" onClick={e => { navigator.clipboard?.writeText(sessionId); const b = e.currentTarget, t = b.textContent; b.textContent = 'Copied!'; setTimeout(() => { b.textContent = t; }, 1200); }}>Copy</button>
-            </div>
-            <div className="modal-actions">
-              <button className="ghost" id="sd-modal-close" onClick={() => setShowSdModal(false)}>Close</button>
-            </div>
+      <Modal id="sd-modal" isOpen={showSdModal && !!sessionId} title="📟 Stream Deck Setup" onClose={() => setShowSdModal(false)}>
+        <p className="modal-hint">Enter these values once in the plugin's property inspector — all buttons share the same connection.</p>
+        <div className="sd-setup-form">
+          <p className="req-link-label">Server URL</p>
+          <div className="req-link-controls">
+            <input id="sd-server-url" type="text" readOnly className="req-link-url" autoComplete="off" value={location.origin} />
+            <CopyButton id="sd-copy-url" text={location.origin} />
+          </div>
+          <p className="req-link-label" style={{ marginTop: '0.5rem' }}>Session ID</p>
+          <div className="req-link-controls">
+            <input id="sd-session-id" type="text" readOnly className="req-link-url" autoComplete="off" value={sessionId ?? ''} />
+            <CopyButton id="sd-copy-sid" text={sessionId ?? ''} />
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* ── Kiosk / request link modal ── */}
-      {kioskLinkModal && (
-        <div id="kiosk-link-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setKioskLinkModal(false); }}>
-          <div className="modal">
-            <div className="modal-heading" id="kiosk-link-heading">🏠 Kiosk Link</div>
-            <p className="req-link-label" id="kiosk-link-hint">Open this on a device to request songs. In kiosk mode, any number of devices can use the same link.</p>
-            <div className="req-link-controls">
-              <input id="kiosk-link-url-input" type="text" readOnly className="req-link-url" autoComplete="off" value={requestUrl} />
-              <button className="btn-copy-link" id="kiosk-link-copy" onClick={e => { navigator.clipboard?.writeText(requestUrl); const b = e.currentTarget, t = b.textContent; b.textContent = 'Copied!'; setTimeout(() => { b.textContent = t; }, 1200); }}>Copy</button>
-              <a id="kiosk-link-open" className="btn-copy-link" href={requestUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
-            </div>
-            <p className="req-link-label">Use this QR code to open the song request form on another device.</p>
-            {kioskLinkQr && <img id="kiosk-link-qr" className="req-link-qr" src={kioskLinkQr} alt="Kiosk QR code" />}
-            <div className="modal-actions">
-              <button className="ghost" id="kiosk-link-close" onClick={() => setKioskLinkModal(false)}>Close</button>
-            </div>
+      <Modal id="kiosk-link-modal" isOpen={kioskLinkModal} title="🏠 Kiosk Link" onClose={() => setKioskLinkModal(false)}>
+        <p className="modal-hint" id="kiosk-link-hint">Open this on a device to request songs. In kiosk mode, any number of devices can use the same link.</p>
+        <div className="req-link-form">
+          <p className="req-link-label">Kiosk URL</p>
+          <div className="req-link-controls">
+            <input id="kiosk-link-url-input" type="text" readOnly className="req-link-url" autoComplete="off" value={requestUrl} />
+            <CopyButton id="kiosk-link-copy" text={requestUrl} />
+            <a id="kiosk-link-open" className="btn-copy-link" href={requestUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
           </div>
         </div>
-      )}
+        <p className="modal-hint">Use this QR code to open the song request form on another device.</p>
+        {kioskLinkQr && <img id="kiosk-link-qr" className="req-link-qr" src={kioskLinkQr} alt="Kiosk QR code" />}
+      </Modal>
 
       {/* ── Display page link modal ── */}
-      {reqLinkModal && (
-        <div id="req-link-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setReqLinkModal(false); }}>
-          <div className="modal">
-            <div className="modal-heading" id="req-link-heading">📺 Crowd QR Display</div>
-            <p className="req-link-label" id="req-link-hint">Show this page on a screen at your venue so guests can scan the QR code to request songs.</p>
-            <div className="req-link-controls">
-              <input id="req-link-url-input" type="text" readOnly className="req-link-url" autoComplete="off" value={displayUrl} />
-              <button className="btn-copy-link" id="req-link-copy" onClick={e => { navigator.clipboard?.writeText(displayUrl); const b = e.currentTarget, t = b.textContent; b.textContent = 'Copied!'; setTimeout(() => { b.textContent = t; }, 1200); }}>Copy</button>
-              <a id="req-link-open" className="btn-copy-link" href={displayUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
-            </div>
-            <p className="req-link-label">Use this QR code to open the crowd QR display on another device.</p>
-            {reqLinkQr && <img id="req-link-qr" className="req-link-qr" src={reqLinkQr} alt="Crowd QR Display code" />}
-            <div className="modal-actions">
-              <button className="ghost" id="req-link-close" onClick={() => setReqLinkModal(false)}>Close</button>
-            </div>
+      <Modal id="req-link-modal" isOpen={reqLinkModal} title="📺 Crowd QR Display" onClose={() => setReqLinkModal(false)}>
+        <p className="modal-hint" id="req-link-hint">Show this page on a screen at your venue so guests can scan the QR code to request songs.</p>
+        <div className="req-link-form">
+          <p className="req-link-label">Request URL</p>
+          <div className="req-link-controls">
+            <input id="req-link-url-input" type="text" readOnly className="req-link-url" autoComplete="off" value={displayUrl} />
+            <CopyButton id="req-link-copy" text={displayUrl} />
+            <a id="req-link-open" className="btn-copy-link" href={displayUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
           </div>
         </div>
-      )}
+        <p className="modal-hint">Use this QR code to open the crowd QR display on another device.</p>
+        {reqLinkQr && <img id="req-link-qr" className="req-link-qr" src={reqLinkQr} alt="Crowd QR Display code" />}
+      </Modal>
 
       {/* ── Devices modal ── */}
-      {showDevices && st && (
-        <div id="devices-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDevices(false); }}>
-          <div className="modal">
-            <div className="modal-heading">🔧 Connected Devices</div>
-
-            <div className="dm-section">
-              <div className="dm-row">
-                <div>
-                  <div className="dm-label" id="dm-requester-label">{st.requestMode === 'kiosk' ? 'Kiosks' : 'Requestors'}</div>
-                  <div className="dm-hint">Reset if the count looks stuck after a device closed without a clean disconnect.</div>
-                </div>
-                <span className="dm-count" id="dm-requester-count">{st.requesterCount}</span>
-                <button className="ghost dm-btn" id="dm-reset-btn" title="Recalculate from live connections" onClick={() => send({ type: 'reset-requester-presence' })}>↺ Reset</button>
-              </div>
+      <Modal id="devices-modal" isOpen={showDevices && !!st} title="🔧 Connected Devices" onClose={() => setShowDevices(false)}>
+        <div className="dm-section">
+          <div className="dm-row">
+            <div>
+              <div className="dm-label" id="dm-requester-label">{st?.requestMode === 'kiosk' ? 'Kiosks' : 'Requestors'}</div>
+              <div className="dm-hint">Reset if the count looks stuck after a device closed without a clean disconnect.</div>
             </div>
-
-            {st.requestMode === 'crowd' && (
-              <div className="dm-section" id="dm-banned-section">
-                <div className="dm-row">
-                  <div className="dm-label">Banned Devices</div>
-                  <span className="dm-count" id="dm-banned-count">{st.bannedCount}</span>
-                  <button className="ghost dm-btn" id="dm-unban-btn" disabled={!(st.bannedCount > 0)} onClick={() => send({ type: 'unban-all-devices' })}>🔓 Unban all</button>
-                </div>
-              </div>
-            )}
-
-            {st.requestMode === 'crowd' && (
-              <div className="dm-section" id="dm-blocked-section">
-                <div className="dm-row">
-                  <div className="dm-label">Waiting</div>
-                  <span className="dm-count" id="dm-blocked-count">{st.blockedCount}</span>
-                  <button className="ghost dm-btn" id="dm-unblock-btn" disabled={!(st.blockedCount > 0)} onClick={() => send({ type: 'clear-blocked-devices' })}>↺ Unblock all</button>
-                </div>
-              </div>
-            )}
-
-            <div className="modal-actions">
-              <button className="ghost" id="devices-modal-close" onClick={() => setShowDevices(false)}>Close</button>
-            </div>
+            <span className="dm-count" id="dm-requester-count">{st?.requesterCount}</span>
+            <button className="ghost dm-btn" id="dm-reset-btn" title="Recalculate from live connections" onClick={() => send({ type: 'reset-requester-presence' })}>↺ Reset</button>
           </div>
         </div>
-      )}
+        {st?.requestMode === 'crowd' && (
+          <div className="dm-section" id="dm-banned-section">
+            <div className="dm-row">
+              <div className="dm-label">Banned Devices</div>
+              <span className="dm-count" id="dm-banned-count">{st.bannedCount}</span>
+              <button className="ghost dm-btn" id="dm-unban-btn" disabled={!(st.bannedCount > 0)} onClick={() => send({ type: 'unban-all-devices' })}>🔓 Unban all</button>
+            </div>
+          </div>
+        )}
+        {st?.requestMode === 'crowd' && (
+          <div className="dm-section" id="dm-blocked-section">
+            <div className="dm-row">
+              <div className="dm-label">Waiting</div>
+              <span className="dm-count" id="dm-blocked-count">{st.blockedCount}</span>
+              <button className="ghost dm-btn" id="dm-unblock-btn" disabled={!(st.blockedCount > 0)} onClick={() => send({ type: 'clear-blocked-devices' })}>↺ Unblock all</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Mic input modal ── */}
+      <Modal isOpen={showMicModal} title="🎙️ Microphone Input" onClose={() => setShowMicModal(false)}>
+        <p className="modal-hint">Select the microphone used for karaoke monitoring.</p>
+        <div className="mic-device-list">
+          {micInputs.length === 0
+            ? <p className="empty">No microphones found</p>
+            : micInputs.map(d => (
+              <label key={d.deviceId} className={`mic-device-item${selectedMicId === d.deviceId ? ' selected' : ''}`}>
+                <input type="radio" name="mic-device" value={d.deviceId}
+                  checked={selectedMicId === d.deviceId}
+                  onChange={() => setSelectedMicId(d.deviceId)} />
+                <span>{d.label || `Microphone (${d.deviceId.slice(0, 8)}…)`}</span>
+              </label>
+            ))
+          }
+        </div>
+        <div className="modal-actions">
+          <button className="btn-modal-secondary" onClick={() => setShowMicModal(false)}>Cancel</button>
+          <button disabled={!selectedMicId} onClick={() => void switchMic(selectedMicId)}>Use Selected</button>
+        </div>
+      </Modal>
 
       {/* ── Standby settings modal ── */}
-      {showSsModal && (
-        <div id="standby-settings-modal" className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSsModal(false); }}>
-          <div className="modal" style={{ width: 'min(580px,calc(100vw - 2rem))' }}>
-            <div className="modal-heading">🖥️ Standby Screen</div>
+      <Modal
+        id="standby-settings-modal"
+        isOpen={showSsModal}
+        title="🖥️ Standby Screen"
+        onClose={() => setShowSsModal(false)}
+        width="min(580px,calc(100vw - 2rem))"
+      >
 
             <label className="ss-label">Title</label>
             <input type="text" id="ss-title" maxLength={80} placeholder="Karaoke Browser" autoComplete="off" value={ssTitle} onChange={e => setSsTitle(e.target.value)} />
@@ -1158,12 +1206,10 @@ export default function ControllerPage() {
               ))}
             </div>
             <div className="modal-actions">
-              <button className="ghost" id="ss-cancel" onClick={() => setShowSsModal(false)}>Cancel</button>
+              <button className="btn-modal-secondary" id="ss-cancel" onClick={() => setShowSsModal(false)}>Cancel</button>
               <button id="ss-save" onClick={saveSs}>Save</button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 }

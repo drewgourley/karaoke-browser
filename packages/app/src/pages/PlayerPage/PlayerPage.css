@@ -1,8 +1,5 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
 html, body {
   width: 100%; height: 100%;
-  background: #0f0f1a;
   overflow: hidden;
   overscroll-behavior: none;   /* prevent pull-to-refresh */
   touch-action: manipulation;  /* prevent double-tap zoom */
@@ -19,7 +16,6 @@ html, body {
   pointer-events: none;
 }
 
-/* Standby music player — audio only, invisible */
 #standby-player {
   position: fixed;
   left: -1px;
@@ -30,7 +26,6 @@ html, body {
   pointer-events: none;
 }
 
-/* In fullscreen the embed fills the whole screen — no fixed size, no border */
 :fullscreen #yt-player,
 :-webkit-full-screen #yt-player {
   position: fixed;
@@ -59,7 +54,6 @@ html, body {
 }
 #idle.visible { opacity: 1; }
 
-/* Animated morphing gradient behind the standby slate */
 .standby-bg {
   position: absolute;
   inset: 0;
@@ -77,13 +71,7 @@ html, body {
   background-size: 400% 400%;
   animation: standby-gradient 10s ease infinite;
 }
-@keyframes standby-gradient {
-  0%   { background-position: 0%   50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0%   50%; }
-}
 
-/* Microphone watermark — diamond pattern drifting diagonally */
 .standby-bg::after {
   content: '';
   position: absolute;
@@ -96,11 +84,6 @@ html, body {
   background-position: 0 0, 50px 50px;
   animation: mic-drift 15s linear infinite;
   pointer-events: none;
-}
-
-@keyframes mic-drift {
-  0%   { background-position: 0 0, 50px 50px; }
-  100% { background-position: 100px 100px, 150px 150px; }
 }
 
 .standby-title {
@@ -167,7 +150,6 @@ html, body {
   text-transform: uppercase;
 }
 
-/* Between-song slate */
 #singer-slate {
   position: fixed;
   inset: 0;
@@ -183,7 +165,6 @@ html, body {
 }
 #singer-slate.visible { opacity: 1; }
 
-/* ── Crowd mode: two-column slate layout ──────────────────────────────────── */
 .slate-content {
   display: flex;
   flex-direction: column;
@@ -249,15 +230,10 @@ html, body {
 .scq-logo    { font-size: clamp(2.5rem,6vw,4rem); line-height: 1; filter: drop-shadow(0 0 16px rgba(255,255,255,0.45)); }
 .scq-heading { font-size: clamp(1.5rem,4vw,3rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; text-align: center; color: var(--scq-heading-color, #ffffff); -webkit-text-stroke: var(--scq-heading-stroke, 0px transparent); paint-order: stroke fill; }
 .scq-sub     { font-size: clamp(0.85rem,2vw,1.1rem); color: var(--scq-sub-color, #ffffff); text-align: center; line-height: 1.55; -webkit-text-stroke: var(--scq-sub-stroke, 0px transparent); paint-order: stroke fill; }
-.scq-card    { background: #fff; border-radius: 20px; padding: 14px; animation: scq-glow 3s ease-in-out infinite; }
+.scq-card    { background: #fff; border-radius: 20px; padding: 14px; animation: qr-glow 3s ease-in-out infinite; }
 .scq-img     { display: block; width: min(240px,30vw); height: min(240px,30vw); image-rendering: pixelated; }
 .scq-url     { display: none; font-size: clamp(0.6rem,1.2vw,0.8rem); color: #64748b; font-family: 'Courier New', monospace; word-break: break-all; text-align: center; max-width: min(240px,30vw); }
-@keyframes scq-glow {
-  0%, 100% { box-shadow: 0 0 40px rgba(255,255,255,0.20); }
-  50%       { box-shadow: 0 0 80px rgba(255,255,255,0.50); }
-}
 
-/* Start gate — requires one user tap to unlock autoplay */
 #start-gate {
   position: fixed;
   inset: 0;
@@ -288,12 +264,7 @@ html, body {
   text-transform: uppercase;
   color: #4cc9f0;
 }
-@keyframes gate-pulse {
-  0%, 100% { transform: scale(1);    opacity: 0.65; }
-  50%       { transform: scale(1.07); opacity: 1;    }
-}
 
-/* Gate status badges */
 #gate-status {
   display: flex;
   gap: 0.75rem;
@@ -326,7 +297,6 @@ html, body {
 .gate-dot.on  { background: #4ecdc4; box-shadow: 0 0 6px #4ecdc4; }
 .gate-dot.off { background: #ef476f; }
 
-/* Open Controller button inside the gate */
 #gate-open-controller {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 1rem;
@@ -345,9 +315,6 @@ html, body {
   border-color: rgba(76,201,240,0.65);
 }
 
-[hidden] { display: none !important; }
-
-/* Displaced banner — shown when another player window takes the slot */
 #displaced-banner {
   position: fixed;
   top: 0;
@@ -359,58 +326,24 @@ html, body {
   justify-content: center;
   gap: 1.25rem;
   padding: 0.75rem 1.5rem;
-  background: rgba(15,15,26,0.92);
-  border-bottom: 1px solid rgba(239,71,111,0.4);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: rgba(15, 15, 26, 0.92);
+  border-bottom: 1px solid rgba(239, 71, 111, 0.4);
   font-size: 0.95rem;
-  color: #ef476f;
+  color: var(--danger);
   backdrop-filter: blur(6px);
 }
 #displaced-banner[hidden] { display: none !important; }
 #displaced-reclaim-btn {
   font-size: 0.85rem;
   padding: 0.35rem 1rem;
-  background: rgba(239,71,111,0.18);
-  border: 1px solid rgba(239,71,111,0.45);
+  background: rgba(239, 71, 111, 0.18);
+  border: 1px solid rgba(239, 71, 111, 0.45);
   border-radius: 6px;
-  color: #ef476f;
+  color: var(--danger);
   cursor: pointer;
   white-space: nowrap;
 }
-#displaced-reclaim-btn:hover { background: rgba(239,71,111,0.32); }
-
-/* Fullscreen toggle — auto-hides, reappears on mouse movement */
-#fullscreen-btn {
-  position: fixed;
-  bottom: 1.25rem;
-  right: 1.25rem;
-  z-index: 9;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 15, 26, 0.75);
-  color: #4cc9f0;
-  border: 1px solid rgba(76, 201, 240, 0.3);
-  border-radius: 8px;
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.4s ease;
-  user-select: none;
-}
-#fullscreen-btn.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-#fullscreen-btn:hover { color: #7dd8f5; border-color: rgba(76, 201, 240, 0.6); }
-
-/* In fullscreen the button must sit above the full-viewport embed */
-:fullscreen #fullscreen-btn,
-:-webkit-full-screen #fullscreen-btn {
-  z-index: 2147483647;
-}
+#displaced-reclaim-btn:hover { background: rgba(239, 71, 111, 0.32); }
 
 #slate-eyebrow {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

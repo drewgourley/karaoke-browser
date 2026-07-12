@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSession } from '../../context/SessionContext.tsx';
 import { api } from '../../api/client.ts';
+import { Modal } from '../../components/Modal.tsx';
+import { CopyButton } from '../../components/CopyButton.tsx';
+import { TogglePill } from '../../components/TogglePill.tsx';
 import type { RequestMode } from '@karaoke-browser/shared';
 import './IndexPage.css';
 
@@ -39,10 +42,6 @@ export default function IndexPage() {
   const [showRequestQrModal, setShowRequestQrModal] = useState(false);
   const [showDisplayQrModal, setShowDisplayQrModal] = useState(false);
   const [password, setPassword]       = useState('');
-  const [copyReqText, setCopyReqText] = useState('Copy');
-  const [copyDispText, setCopyDispText] = useState('Copy');
-  const [copySdUrlText, setCopySdUrlText] = useState('Copy');
-  const [copySdSidText, setCopySdSidText] = useState('Copy');
   const [sdOpen, setSdOpen]           = useState(false);
   const [reqOpen, setReqOpen]         = useState(false);
   const [wsPlayerConnected, setWsPlayerConnected]       = useState<boolean | null>(null);
@@ -259,14 +258,6 @@ export default function IndexPage() {
 
   useEffect(() => () => { if (updatePollRef.current) clearInterval(updatePollRef.current); }, []);
 
-  // ── Copy helpers ─────────────────────────────────────────────────────────
-  const copyToClipboard = async (text: string, setter: (s: string) => void) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setter('Copied ✓');
-      setTimeout(() => setter('Copy'), 2000);
-    } catch { /* ignore */ }
-  };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -365,21 +356,21 @@ export default function IndexPage() {
                     ? '🔗 Use this link to open the song request form'
                     : '🔗 Share this link so guests can request songs'}
                 </div>
-                <button
+                <TogglePill
+                  variant="mode"
                   id="req-mode-toggle"
-                  className="mode-toggle"
-                  data-mode={requestMode}
-                  onClick={toggleMode}
+                  value={requestMode}
                   title={'Kiosk: unlimited requests per device\nCrowd: one request per device until processed'}
-                >
-                  <span className="mode-track"></span>
-                  <span className="mode-option">🏠 Kiosk</span>
-                  <span className="mode-option">📱 Crowd</span>
-                </button>
+                  onChange={() => void toggleMode()}
+                  options={[
+                    { value: 'kiosk', label: '\uD83C\uDFE0 Kiosk' },
+                    { value: 'crowd', label: '\uD83D\uDCF1 Crowd' },
+                  ]}
+                />
               </div>
               <div className="request-link-controls">
                 <input id="request-url" type="text" readOnly className="request-url-input" value={requestUrl} />
-                <button id="copy-request-btn" className="btn-copy" onClick={() => copyToClipboard(requestUrl, setCopyReqText)}>{copyReqText}</button>
+                <CopyButton id="copy-request-btn" text={requestUrl} className="btn-copy" resetMs={2000} />
                 <a id="open-request-link" className="btn-copy" href={requestUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
               </div>
               <button id="request-qr-btn" className="btn-display-qr" onClick={() => setShowRequestQrModal(true)}>
@@ -391,7 +382,7 @@ export default function IndexPage() {
                   <div className="request-link-label">📺 Display this page so guests can scan the QR code to open the song request form</div>
                   <div className="request-link-controls">
                     <input id="display-url-input" type="text" readOnly className="request-url-input" value={displayUrl} />
-                    <button id="copy-display-btn" className="btn-copy" onClick={() => copyToClipboard(displayUrl, setCopyDispText)}>{copyDispText}</button>
+                    <CopyButton id="copy-display-btn" text={displayUrl} className="btn-copy" resetMs={2000} />
                     <a id="open-display-link" className="btn-copy" href={displayUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
                   </div>
                   <button id="display-qr-btn" className="btn-display-qr" onClick={() => setShowDisplayQrModal(true)}>
@@ -424,14 +415,14 @@ export default function IndexPage() {
                   <p className="sd-field-label">Server URL</p>
                   <div className="request-link-controls">
                     <input id="sd-server-url" type="text" readOnly className="request-url-input" autoComplete="off" value={location.origin} />
-                    <button id="sd-copy-url" className="btn-copy" onClick={() => copyToClipboard(location.origin, setCopySdUrlText)}>{copySdUrlText}</button>
+                    <CopyButton id="sd-copy-url" text={location.origin} className="btn-copy" resetMs={2000} />
                   </div>
                 </div>
                 <div className="sd-field">
                   <p className="sd-field-label">Session ID</p>
                   <div className="request-link-controls">
                     <input id="sd-session-id" type="text" readOnly className="request-url-input" autoComplete="off" value={sessionId} />
-                    <button id="sd-copy-sid" className="btn-copy" onClick={() => copyToClipboard(sessionId, setCopySdSidText)}>{copySdSidText}</button>
+                    <CopyButton id="sd-copy-sid" text={sessionId} className="btn-copy" resetMs={2000} />
                   </div>
                 </div>
                 <p className="hint">If your server requires a password, enter the Auth Token separately in the plugin inspector.</p>
@@ -477,50 +468,40 @@ export default function IndexPage() {
       )}
 
       {/* ── Update confirm modal ── */}
-      {showUpdateModal && versionInfo && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirm update"
-             onClick={e => { if (e.target === e.currentTarget) setShowUpdateModal(false); }}>
-          <div className="modal">
-            <div className="modal-header-row">
-              <span className="modal-heading">Update Available</span>
-              <button className="btn-modal-close" aria-label="Close" onClick={() => setShowUpdateModal(false)}>&times;</button>
-            </div>
-            <p className="modal-hint">Would you like to update to the latest version?<br /><code className="version-hash">v.{versionInfo.current}</code> → <code className="version-hash">v.{versionInfo.latest}</code></p>
-            <div className="modal-actions">
-              <button className="btn-modal-secondary" onClick={() => setShowUpdateModal(false)}>Cancel</button>
-              <button className="btn-update" onClick={handleUpdate}>Update</button>
-            </div>
-          </div>
+      <Modal
+        isOpen={showUpdateModal && !!versionInfo}
+        title="Update Available"
+        onClose={() => setShowUpdateModal(false)}
+        aria-label="Confirm update"
+      >
+        <p className="modal-hint">Would you like to update to the latest version?<br /><code className="version-hash">v.{versionInfo?.current}</code> → <code className="version-hash">v.{versionInfo?.latest}</code></p>
+        <div className="modal-actions">
+          <button className="btn-modal-secondary" onClick={() => setShowUpdateModal(false)}>Cancel</button>
+          <button className="btn-update" onClick={handleUpdate}>Update</button>
         </div>
-      )}
-      {showRequestQrModal && (
-        <div id="request-qr-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-label="Request form QR code"
-             onClick={e => { if (e.target === e.currentTarget) setShowRequestQrModal(false); }}>
-          <div className="modal">
-            <div className="modal-header-row">
-              <span className="modal-heading">Open Request Form</span>
-              <button id="request-qr-close" className="btn-modal-close" aria-label="Close" onClick={() => setShowRequestQrModal(false)}>&times;</button>
-            </div>
-            <p className="modal-hint">Scan to open the song request form on another device.</p>
-            {requestQr && <img id="request-qr-img" className="req-link-qr" src={requestQr} alt="Request form QR code" />}
-          </div>
-        </div>
-      )}
+      </Modal>
+      <Modal
+        id="request-qr-modal"
+        isOpen={showRequestQrModal}
+        title="Open Request Form"
+        onClose={() => setShowRequestQrModal(false)}
+        aria-label="Request form QR code"
+      >
+        <p className="modal-hint">Scan to open the song request form on another device.</p>
+        {requestQr && <img id="request-qr-img" className="req-link-qr" src={requestQr} alt="Request form QR code" />}
+      </Modal>
 
       {/* ── Display QR modal ── */}
-      {showDisplayQrModal && (
-        <div id="display-qr-modal" className="modal-overlay" role="dialog" aria-modal="true" aria-label="Display page QR code"
-             onClick={e => { if (e.target === e.currentTarget) setShowDisplayQrModal(false); }}>
-          <div className="modal">
-            <div className="modal-header-row">
-              <span className="modal-heading">Open Crowd QR Display Page</span>
-              <button id="display-qr-close" className="btn-modal-close" aria-label="Close" onClick={() => setShowDisplayQrModal(false)}>&times;</button>
-            </div>
-            <p className="modal-hint">Scan to open the crowd display on another device.</p>
-            {displayQr && <img id="display-qr-img" className="req-link-qr" src={displayQr} alt="Display page QR code" />}
-          </div>
-        </div>
-      )}
+      <Modal
+        id="display-qr-modal"
+        isOpen={showDisplayQrModal}
+        title="Open Crowd QR Display Page"
+        onClose={() => setShowDisplayQrModal(false)}
+        aria-label="Display page QR code"
+      >
+        <p className="modal-hint">Scan to open the crowd display on another device.</p>
+        {displayQr && <img id="display-qr-img" className="req-link-qr" src={displayQr} alt="Display page QR code" />}
+      </Modal>
 
     </>
   );
