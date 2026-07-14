@@ -835,16 +835,18 @@ export default function ControllerPage() {
                     </div>
                   </div>
                 </div>
-                {st.standbyPlaylistId && (
+                {(
                   <div className="card" id="standby-track-card">
                     <div className="queue-header">
                       <div className="card-label" style={{ marginBottom: 0 }}>
                         Playlist Tracks <span className="badge" id="standby-track-count">{mxTracks.length}</span>
                       </div>
-                      <button className="card-btn-sm" id="clear-standby-btn" title="Clear standby playlist" onClick={() => setShowClearStandbyModal(true)}>✕ Clear</button>
+                      <button className="card-btn-sm" id="clear-standby-btn" title="Clear standby playlist" disabled={!st.standbyPlaylistId} onClick={() => setShowClearStandbyModal(true)}>✕ Clear</button>
                     </div>
                     <ul className="queue" id="standby-track-list">
-                      {mxTracks.map((t, i) => (
+                      {mxTracks.length === 0 ? (
+                        <li className="empty">Playlist is empty</li>
+                      ) : mxTracks.map((t, i) => (
                         <QueueListItem
                           key={t.videoId}
                           index={i}
