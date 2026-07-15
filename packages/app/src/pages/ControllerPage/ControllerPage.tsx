@@ -835,30 +835,28 @@ export default function ControllerPage() {
                     </div>
                   </div>
                 </div>
-                {(
-                  <div className="card" id="standby-track-card">
-                    <div className="queue-header">
-                      <div className="card-label" style={{ marginBottom: 0 }}>
-                        Playlist Tracks <span className="badge" id="standby-track-count">{mxTracks.length}</span>
-                      </div>
-                      <button className="card-btn-sm" id="clear-standby-btn" title="Clear standby playlist" disabled={!st.standbyPlaylistId} onClick={() => setShowClearStandbyModal(true)}>✕ Clear</button>
+                <div className="card" id="standby-track-card">
+                  <div className="queue-header">
+                    <div className="card-label" style={{ marginBottom: 0 }}>
+                      Playlist Tracks <span className="badge" id="standby-track-count">{mxTracks.length}</span>
                     </div>
-                    <ul className="queue" id="standby-track-list">
-                      {mxTracks.length === 0 ? (
-                        <li className="empty">Playlist is empty</li>
-                      ) : mxTracks.map((t, i) => (
-                        <QueueListItem
-                          key={t.videoId}
-                          index={i}
-                          videoId={t.videoId}
-                          title={t.title}
-                          thumbnail={t.thumbnail}
-                          isCurrent={st.standbyTrack?.videoId === t.videoId}
-                        />
-                      ))}
-                    </ul>
+                    <button className="card-btn-sm" id="clear-standby-btn" title="Clear standby playlist" disabled={!st.standbyPlaylistId} onClick={() => setShowClearStandbyModal(true)}>✕ Clear</button>
                   </div>
-                )}
+                  <ul className="queue" id="standby-track-list">
+                    {mxTracks.length === 0 ? (
+                      <li className="empty">Playlist is empty</li>
+                    ) : mxTracks.map((t, i) => (
+                      <QueueListItem
+                        key={t.videoId}
+                        index={i}
+                        videoId={t.videoId}
+                        title={t.title}
+                        thumbnail={t.thumbnail}
+                        isCurrent={st.standbyTrack?.videoId === t.videoId}
+                      />
+                    ))}
+                  </ul>
+                </div>
               </div>
 
               {/* Col 2: Standby playlist */}
