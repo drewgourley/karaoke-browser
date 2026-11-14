@@ -4,6 +4,11 @@ node_modules/
 # build output
 packages/api/dist/
 packages/app/dist/
+packages/shared/dist/
+*.tsbuildinfo
+# stray compiled files beside the shared sources
+packages/shared/src/*.js
+packages/shared/src/*.js.map
 
 # secrets
 .env

@@ -321,3 +321,18 @@ ecosystem.config.js    PM2 config — gitignored (create locally)
 | `GET` | `/api/qr?data=` | Rate-limited | Generates a QR code PNG. Returns `{ dataUrl }`. 20 req/IP/min. |
 
 WebSocket connects to `/?s=<sessionId>&role=<controller|player|request>`.
+
+---
+
+## Disclaimer
+
+karaoke-browser is an independent project. It is not affiliated with, endorsed by or sponsored by YouTube or Google. YouTube is a
+trademark of Google LLC. The player uses YouTube's official IFrame Player API and search uses the YouTube Data API v3, so you must
+follow the [YouTube API Services Terms of Service](https://developers.google.com/youtube/terms/api-services-terms-of-service) and
+the [YouTube Terms of Service](https://www.youtube.com/t/terms) when you run it, and you are responsible for your own API keys and
+quota. The software doesn't download, store or re-stream any video or audio. Public performance of music is your responsibility
+too: venues usually need the right licences.
+
+## License
+
+Released under the [MIT License](LICENSE).

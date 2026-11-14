@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Karaoke queue browser — TypeScript monorepo",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
