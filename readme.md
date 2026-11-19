@@ -120,8 +120,8 @@ Copy `packages/api/.env.example` to `packages/api/.env` and edit as needed.
 
 | Variable | Default | Description |
 |---|---|---|
-| `MAX_SESSIONS` | `500` | Maximum concurrent in-memory sessions. Returns HTTP 503 when full. |
-| `SESSION_TTL_HOURS` | `4` | Hours of inactivity before a session is eligible for cleanup. |
+| `MAX_SESSIONS` | `500` | Maximum concurrent sessions (counted in Redis, so shared across instances). Returns HTTP 503 when full. |
+| `SESSION_TTL_HOURS` | `4` | Hours of inactivity before a session expires from Redis. The TTL is refreshed on every change. |
 
 ### Rate limits
 
@@ -251,8 +251,7 @@ The following protections are built in and all tunable via `.env`:
 | YouTube key rotation | Round-robin; auto-retire on 403 until midnight UTC | `YOUTUBE_API_KEYS` |
 | Search result cache | Redis-backed, shared across all instances | `SEARCH_CACHE_TTL_MIN` |
 | WS connection rate limit | 60 upgrades/IP/min (pre-handshake) | `WS_CONN_RATE_MAX`, `WS_CONN_RATE_WINDOW_MIN` |
-| Search result cache | 60-minute TTL; cached hits cost zero API quota | `SEARCH_CACHE_TTL_MIN` |
-| Session persistence | Save every 60 s + on SIGTERM/SIGINT; restore on restart | — |
+| Session persistence | Redis (AOF in the compose file); state survives server restarts and expires after `SESSION_TTL_HOURS` idle | `SESSION_TTL_HOURS` |
 
 All rate limiters are in-process `Map`s. If you run multiple Node.js instances behind a load balancer, replace them with a shared store (e.g. Redis + `express-rate-limit`'s Redis store).
 
