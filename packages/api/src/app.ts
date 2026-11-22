@@ -53,7 +53,6 @@ function sid(id: string | null | undefined): string {
   return id ? id.slice(0, 8) + '\u2026' : '(none)';
 }
 
-// The reverse proxy appends the address it saw to X-Forwarded-For, so only the last entry is trustworthy; earlier ones are whatever the client sent.
 function clientIp(req: IncomingMessage): string {
   const xff = req.headers['x-forwarded-for'];
   const last = (Array.isArray(xff) ? xff.join(',') : xff)?.split(',').pop()?.trim();
