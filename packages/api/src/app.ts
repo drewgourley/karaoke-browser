@@ -53,6 +53,13 @@ function sid(id: string | null | undefined): string {
   return id ? id.slice(0, 8) + '\u2026' : '(none)';
 }
 
+// The reverse proxy appends the address it saw to X-Forwarded-For, so only the last entry is trustworthy; earlier ones are whatever the client sent.
+function clientIp(req: IncomingMessage): string {
+  const xff = req.headers['x-forwarded-for'];
+  const last = (Array.isArray(xff) ? xff.join(',') : xff)?.split(',').pop()?.trim();
+  return (last || req.socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
+}
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 interface RateLimiterEntry { count: number; resetAt: number }
 
@@ -171,7 +178,7 @@ function checkWsConnLimit(ip: string): boolean {
 const wss = new WebSocketServer({
   server,
   verifyClient: ({ req }: { req: IncomingMessage }, done: (res: boolean, code?: number, message?: string) => void) => {
-    const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'unknown';
+    const ip = clientIp(req);
     if (!checkWsConnLimit(ip)) {
       logger.warn(`WS conn rate limit  ip=${ip}`);
       done(false, 429, 'Too Many Requests');
@@ -921,8 +928,7 @@ wss.on('connection', async (rawWs: WebSocket, req: IncomingMessage) => {
   const ws = rawWs as KaraokeWs;
   const wsUrl = new URL(req.url ?? '/', 'http://localhost');
   const role = wsUrl.searchParams.get('role') ?? 'unknown';
-  const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
-    ?? req.socket.remoteAddress ?? 'unknown';
+  const ip = clientIp(req);
 
   if (AUTH_HASH && role !== 'request' && !hashEqual(getCookie(req as unknown as Request, 'kp_auth'), AUTH_HASH)) {
     logger.warn(`WS auth failed  role=${role} ip=${ip}`);
